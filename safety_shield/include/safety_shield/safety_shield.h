@@ -545,6 +545,64 @@ class SafetyShield {
    */
   Motion computesPotentialTrajectory(bool v, const std::vector<double>& prev_speed);
 
+
+  // define trajectory struc
+  struct Trajectory {
+    std::vector<std::vector<double>> pos;
+    std::vector<std::vector<double>> vel;
+    std::vector<std::vector<double>> acc;
+  };
+
+  // new variables
+  Trajectory long_term_trajectory_; // long term trajectory if long term goal is considered or replanning is needed with more than one step
+  Trajectory verified_trajectory_; // current trajectory we move on consisting of intended step + braking trajectory
+  int verified_trajectory_index_ = 0; // index of the current trajectory (intended step + braking trajectory)
+  int ltt_index_ = 0; // index of the long term trajectory
+  bool on_braking = false; // indicates if we are on the braking trajectory (recovery)
+
+  /**
+   * @brief Updates the verified_trajectory index and returns the current motion. 
+   */
+  Motion SafetyShield::getCurrentMotionFromTrajectory();
+
+  /**
+   * @brief Computes a trajectory for the safety shield to move to.
+   * @details This function is called when a new goal is set or we are on the braking trajectory to compute recovery maneuver. - updates the long_term_trajectory_.
+   * @param new_goal The new goal to move to.
+   * @param current_motion The current motion.
+   */
+  void goalPlanningRuckig(Motion& current_motion, Motion& goal_motion, Trajectory &long_term_trajectory);
+
+  /**
+   * @brief Compute the desired motion to be executed.
+   * @details This function updates the trajectory index of the long term trajectory and returns the next motion.
+   * @return Motion the desired motion to be executed.
+   */
+  Motion SafetyShield::getDesiredMotion();
+
+  /**
+   * @brief Computes the potential trajectory consiting of one intended step and a braking trajectory.
+   * @details This function computes the potential trajectory based on the current motion and the desired motion.
+   * @return new Trajectory.
+   */
+  void computePotentialTrajectoryRuckig(Motion& current_motion, Motion& desired_motion, Trajectory& potential_path);
+
+  /**
+   * @brief Verify the desired trajectory.
+   * @details This function checks if the desired trajectory is safe to execute and overrides the verified_trajectory_ if it is safe.
+   * @param desired_trajectory The desired trajectory to verify.
+   * @return true if the desired motion is safe, false otherwise.
+   */
+  bool SafetyShield::verifyTrajectory(Trajectory& potential_trajectory);
+
+  /**
+   * @brief Step the safety shield with non path consistent braking.
+   * @param cycle_begin_time timestep of begin of current cycle in seconds.
+   * @details This function is called in every cycle of the safety shield.
+   * @return next motion to be executed
+   */
+  Motion SafetyShield::stepNonPathConistent(double cycle_begin_time);
+
   /**
    * @brief Gets the information that the next simulation cycle (sample time) has started
    * @param cycle_begin_time timestep of begin of current cycle in seconds.

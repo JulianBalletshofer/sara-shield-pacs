@@ -529,6 +529,98 @@ Motion SafetyShield::determineNextMotion(bool is_safe) {
   return next_motion;
 }
 
+// define trajectory struc
+struct Trajectory {
+  std::vector<std::vector<double>> pos;
+  std::vector<std::vector<double>> vel;
+  std::vector<std::vector<double>> acc;
+};
+
+Motion SafetyShield::getCurrentMotionFromTrajectory(){
+  // increment trajectory index of current trajectory - if index is larger than trajectory size, return last motion - return motion
+
+}
+
+void goalPlanningRuckig(Motion& current_motion, Motion& goal_motion, Trajectory &long_term_trajectory)
+  // plan new trajectory from current position to new goal - if successful, override longterm trajectory with new trajectory
+}
+
+Motion SafetyShield::getDesiredMotion(){
+  // increment trajectory index of long term trajectory - if index is larger than trajectory size, return last motion - return motion
+  // if desired motion is set by input, return input motion
+}
+void computePotentialTrajectoryRuckig(Motion& current_motion, Motion& desired_motion, Trajectory& potential_path) {
+  // compute braking trajectory from desired motion onward
+  // add current motion to braking trajectory
+  // return potential trajectory
+}
+
+bool SafetyShield::verifyTrajectory(Trajectory& potential_trajectory){
+  // verify trajectory:
+  //   1. compute time points for equidistant intervals
+  //   2. convert trajectory to motions
+  //   3. compute methods from new long term Trajectory (Jacobians, etc.)
+  //   4. verify safety of trajectory according to defined safety criteria
+  // if safe - update current trajectory with new braking trajectory
+}
+
+Motion SafetyShield::stepNonPathConistent(double cycle_begin_time) {
+  cycle_begin_time_ = cycle_begin_time; // initi current time from call
+  try {
+    // Get current motion - increment trajectory index - get current position from verified trajectory (verified trajectory is always computed from intended step + braking trajectory)
+    // getCurrentMotion()
+
+    // check if new goal is set or we are on braking trajectory - if so, plan new long term trajectory 
+    // goalPlanningRuckig()
+
+    // Get desired motion - take desired motion from longterm trajectory or use input desired motion
+    // getDesiredMotion();
+
+    // Compute braking motion from next desired motion onward - return potential trajectory from current position to next desired motion + braking motion 
+
+    // verify_trajectory(): - output bool
+      // 1. compute time points for equidistant intervals: 
+      // std::vector<double> time_points = calcTimePointsForEquidistantIntervals(0, sample_time_ * N, reachability_set_duration_);
+      
+      // 2. convert trajectory to motions
+      // std::vector<Motion> motions = convertTrajToMotionsTimePoints(potential trajectory, time_points, 0, sample_time_);
+      
+      // 3. generate long term trajectory object from motions - differentiate between pfl and SSM - optional keep alpha fixed for ssm
+      // potential_traj = LongTermTraj()
+      
+      // 4. get alpha_i from new long term trajectory
+      // std::vector<double> alpha_i = potential_traj.getAlphaI();
+
+      // 5. compute reachable sets human and robot
+      // robot_reach_->computeReachableSets(motions, time_points, alpha_i);
+      // human_reach_->computeReachableSets(motions, time_points, alpha_i);
+
+      // 6. verify safety of trajectory according to defined safety criteria
+      // if pfl:
+      //  1. buildVelocityPointers from potential_traj - just iterate through index now aligns with time index
+      //    buildVelocityPointers - adjust
+
+      //  take the following steps as implemented:
+      //  2. compute velocity errors
+      //  3. get human raddi
+      //  4. get unclampable body part maps
+      //  5. get unclampable enclosures map
+
+      //  6. get inertias from potential_traj - directly from the computed inertias as we consider full step sizes - adjust
+
+      //  7. verify_->verifyHumanReachEnergyContactCases
+      // if SSM:
+      //  verify_->verifyHumanReachTimeIntervals(robot_capsules_time_intervals_, human_capsules_time_intervals_, collision_index);
+
+    // get next motion from braking trajectory based on current index + 1 ( move with desired step based on the updated trajectory, else we move on previous verified braking trajectory)
+
+    return next_motion_;
+  } catch (const std::exception& exc) {
+    atspdlog::error("Exception in SafetyShield::getNextCycle: {}", exc.what());
+    return getCurrentMotion();
+  }
+}
+
 Motion SafetyShield::step(double cycle_begin_time) {
   cycle_begin_time_ = cycle_begin_time;
   try {
