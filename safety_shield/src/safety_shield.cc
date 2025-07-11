@@ -529,97 +529,84 @@ Motion SafetyShield::determineNextMotion(bool is_safe) {
   return next_motion;
 }
 
-// define trajectory struc
-struct Trajectory {
-  std::vector<std::vector<double>> pos;
-  std::vector<std::vector<double>> vel;
-  std::vector<std::vector<double>> acc;
-};
+void computeIntervalEdgeMotions(const std::vector<double> time_points, 
+                                                 const std::vector<Motion>& monitored_trajectory){
+// select interval edge motions at time points of monitored trajectory
+// create monitored_trajectory_ object used for verification containing jacobians, inertia, alpha_i, betha_i
 
-Motion SafetyShield::getCurrentMotionFromTrajectory(){
-  // increment trajectory index of current trajectory - if index is larger than trajectory size, return last motion - return motion
-
+                                                }
+                
+std::vector<Motion> computeMonitoredTrajectory(const Motion& current_motion, const Motion& motion_after_intended_step){
+  // compute failsafe path from motion_after_intended_step - computeFailsafeTrajectoryNonPathConsistent(const Motion& start_motion)
+  // construct monitored trajectory as vector of motions with current_motion and motion_after_intended_step and the failsafe path
+  // return monitored trajectory 
 }
 
-void goalPlanningRuckig(Motion& current_motion, Motion& goal_motion, Trajectory &long_term_trajectory)
-  // plan new trajectory from current position to new goal - if successful, override longterm trajectory with new trajectory
+// slightly different from the original code, but now more flexible to be used in NonPathConsistent and PathConsistent
+bool SafetyShield::verifySafety(){
+  // get alpha_i from long term trajectory or monitored trajectory if non path consistent
+  // compute robot capsules at interval edges
+  // robot_capsules_time_intervals_ = robot_reach_->reachTimeIntervals(interval_edges_motions_, alpha_i);
+  // // Compute the human reachable sets for the potential trajectory
+  // // humanReachabilityAnalysis(t_command, t_brake)
+  // human_capsules_time_intervals_ = human_reach_->humanReachabilityAnalysisTimeIntervals(cycle_begin_time_, time_points_);
+  // int collision_index = -1;
+  // if (shield_type_ == ShieldType::PFL) {
+  //   is_safe = verifyContactEnergySafetyByContactType(time_points_, interval_edges_motions_, collision_index);
+  //   /*
+  //   // is_safe = unconstrainedContactConstraint AND constrainedContactConstraint
+  //   is_safe = verifyContactEnergySafety(time_points, interval_edges_motions, collision_index);
+  //   // Weird way of writing AND to make sure that the collision index is set to the correct value.
+  //   if (is_safe) {
+  //     is_safe = verifyConstrainedContactSafety(time_points_, interval_edges_motions_, collision_index);    
+  //   }
+  // } else {
+  //   // Verify if the robot and human reachable sets are collision free
+  //   is_safe = verify_->verifyHumanReachTimeIntervals(robot_capsules_time_intervals_, human_capsules_time_intervals_, collision_index);
+  // }
+  // // for visualization in hrgym, reachability sets of last timestep are used
+  // if (is_safe) {
+  //   robot_capsules_ = robot_capsules_time_intervals_[robot_capsules_time_intervals_.size()-1];
+  //   human_capsules_ = human_capsules_time_intervals_[human_capsules_time_intervals_.size()-1];
+  // } else {
+  //   robot_capsules_ = robot_capsules_time_intervals_[collision_index];
+  //   human_capsules_ = human_capsules_time_intervals_[collision_index];
+  // }
+  // return is_safe;
 }
 
-Motion SafetyShield::getDesiredMotion(){
-  // increment trajectory index of long term trajectory - if index is larger than trajectory size, return last motion - return motion
-  // if desired motion is set by input, return input motion
-}
-void computePotentialTrajectoryRuckig(Motion& current_motion, Motion& desired_motion, Trajectory& potential_path) {
-  // compute braking trajectory from desired motion onward
-  // add current motion to braking trajectory
-  // return potential trajectory
-}
-
-bool SafetyShield::verifyTrajectory(Trajectory& potential_trajectory){
-  // verify trajectory:
-  //   1. compute time points for equidistant intervals
-  //   2. convert trajectory to motions
-  //   3. compute methods from new long term Trajectory (Jacobians, etc.)
-  //   4. verify safety of trajectory according to defined safety criteria
-  // if safe - update current trajectory with new braking trajectory
-}
-
-Motion SafetyShield::stepNonPathConistent(double cycle_begin_time) {
-  cycle_begin_time_ = cycle_begin_time; // initi current time from call
-  try {
+std::vector<Motion> SafetyShield::stepNonPathConistent() {
     // Get current motion - increment trajectory index - get current position from verified trajectory (verified trajectory is always computed from intended step + braking trajectory)
-    // getCurrentMotion()
+    // incrementVerifiedTrajectory
+    // current_motion = verfied_trajectory_[verified_trajectory_index_];
 
     // check if new goal is set or we are on braking trajectory - if so, plan new long term trajectory 
-    // goalPlanningRuckig()
+    // if (!is_safe_ || !new_goal_) {
+    //   intended_trajectory_ = trajectoryPlanningRuckig(current_motion, new_goal_motion_); // we either plan back to the old goal (if on failsafe) or to a new goal
+    //   intended_trajectory_index_ = 0; // do planning sucess check before resetting
+    
 
-    // Get desired motion - take desired motion from longterm trajectory or use input desired motion
-    // getDesiredMotion();
+    // Get motion_after_intended_step - take desired motion from longterm trajectory or use input desired motion
+    // incrementIntendedTrajectory();
+    // motion_after_intended_step = intended_trajectory_[intended_trajectory_index_];
 
-    // Compute braking motion from next desired motion onward - return potential trajectory from current position to next desired motion + braking motion 
-
-    // verify_trajectory(): - output bool
-      // 1. compute time points for equidistant intervals: 
-      // std::vector<double> time_points = calcTimePointsForEquidistantIntervals(0, sample_time_ * N, reachability_set_duration_);
-      
-      // 2. convert trajectory to motions
-      // std::vector<Motion> motions = convertTrajToMotionsTimePoints(potential trajectory, time_points, 0, sample_time_);
-      
-      // 3. generate long term trajectory object from motions - differentiate between pfl and SSM - optional keep alpha fixed for ssm
-      // potential_traj = LongTermTraj()
-      
-      // 4. get alpha_i from new long term trajectory
-      // std::vector<double> alpha_i = potential_traj.getAlphaI();
-
-      // 5. compute reachable sets human and robot
-      // robot_reach_->computeReachableSets(motions, time_points, alpha_i);
-      // human_reach_->computeReachableSets(motions, time_points, alpha_i);
-
-      // 6. verify safety of trajectory according to defined safety criteria
-      // if pfl:
-      //  1. buildVelocityPointers from potential_traj - just iterate through index now aligns with time index
-      //    buildVelocityPointers - adjust
-
-      //  take the following steps as implemented:
-      //  2. compute velocity errors
-      //  3. get human raddi
-      //  4. get unclampable body part maps
-      //  5. get unclampable enclosures map
-
-      //  6. get inertias from potential_traj - directly from the computed inertias as we consider full step sizes - adjust
-
-      //  7. verify_->verifyHumanReachEnergyContactCases
-      // if SSM:
-      //  verify_->verifyHumanReachTimeIntervals(robot_capsules_time_intervals_, human_capsules_time_intervals_, collision_index);
-
-    // get next motion from braking trajectory based on current index + 1 ( move with desired step based on the updated trajectory, else we move on previous verified braking trajectory)
-
-    return next_motion_;
-  } catch (const std::exception& exc) {
-    atspdlog::error("Exception in SafetyShield::getNextCycle: {}", exc.what());
-    return getCurrentMotion();
-  }
+    // compute monitored trajectory - call 
+    // monitored_trajectoy = computeMonitoredTrajectory(const Motion& current_motion, const Motion& motion_after_intended_step)
+    
+    // compute Interval Edge Motions, jacobians, inertia, alpha_i, betha_i at time points of monitored trajectory 
+    // compute time_points_
+    // computeIntervalEdgeMotions(time_points_); // this stores the interval edge motions, the jacobians, inertia, alpha_i, betha_i used for verification
+    // return monitored_trajectory;
 }
+
+Motion SafetyShield::step(double cycle_begin_time){
+  cycle_begin_time_ = cycle_begin_time;
+  // use either stepNonPathConistent or stepPathConistent based on type - this computes a mointored trajectory, time intervals, interval edge motions, jacobians, inertia, alpha_i, betha_i
+  // is_safe = verifySafety();
+  // update verified trajectory with monitored trajectory if safe else move on previous verified trajectory
+  // return next_motion_;
+}
+
 
 Motion SafetyShield::step(double cycle_begin_time) {
   cycle_begin_time_ = cycle_begin_time;
@@ -823,6 +810,9 @@ void SafetyShield::buildRobotVelocityPointers(
       vel_cap_end.push_back(long_term_trajectory_.getVelocityCapsuleIterator(
         long_term_trajectory_.getUpperIndex(interval_edges_motions[i+1].getS())));
     }
+    // add for non path consistent - create velocity pointers from the mointored trajectory
+    // vel_cap_start.push_back(interval_edges_motions[i].getVelocityCapsuleIterator());
+    // vel_cap_end.push_back(interval_edges_motions[i+1].getVelocityCapsule
   }
 }
 
@@ -995,6 +985,8 @@ std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> 
     ltt = new_long_term_trajectory_;
   }
   return getInertiaMatricesOfAllTimeStepsFromPath(ltt, potential_path_, time_points);
+  // add for non path consistent - create inertia matrices from the mointored trajectory
+  // mointored_trajectory_.getInertiaMatrices(i)
 }
 
 }  // namespace safety_shield

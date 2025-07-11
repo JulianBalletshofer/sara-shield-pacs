@@ -546,67 +546,112 @@ class SafetyShield {
   Motion computesPotentialTrajectory(bool v, const std::vector<double>& prev_speed);
 
 
-  // define trajectory struc
-  struct Trajectory {
-    std::vector<std::vector<double>> pos;
-    std::vector<std::vector<double>> vel;
-    std::vector<std::vector<double>> acc;
-  };
-
   // new variables
-  Trajectory long_term_trajectory_; // long term trajectory if long term goal is considered or replanning is needed with more than one step
-  Trajectory verified_trajectory_; // current trajectory we move on consisting of intended step + braking trajectory
-  int verified_trajectory_index_ = 0; // index of the current trajectory (intended step + braking trajectory)
-  int ltt_index_ = 0; // index of the long term trajectory
-  bool on_braking = false; // indicates if we are on the braking trajectory (recovery)
+  /**
+   * @brief time points of equidistance intervals.
+   * @details the time points define edges of the intervals used for verification.
+   */
+  std::vector<double>  time_points_;
+  /**
+   * @brief interval_edges_motions contains the motions at the edges of the time intervals.
+   * @details This vector is used to compute the Jacobians, Inertias, and velocity capsules at the time points.
+   */
+  std::vector<Motion> interval_edges_motions_;
+  /**
+   * @brief intended_trajectory_ is the trajectory that the safety shield intends to follow to a goal_motion.
+   * Note: this trajectory could also be used for Path Consistent braking to only compute the Jacobians, Inertias, and velocity capsules at the time points during verification later.
+   */
+  std::vector<Motion>  intended_trajectory_;
 
   /**
-   * @brief Updates the verified_trajectory index and returns the current motion. 
+   * @brief verified_trajectory_ is a verified monitored trajectory consisting of one time step of the intended trajectory followed by a non path-consistent failsafe trajectory.
    */
-  Motion SafetyShield::getCurrentMotionFromTrajectory();
+  std::vector<Motion>  verified_trajectory_;
 
   /**
-   * @brief Computes a trajectory for the safety shield to move to.
-   * @details This function is called when a new goal is set or we are on the braking trajectory to compute recovery maneuver. - updates the long_term_trajectory_.
-   * @param new_goal The new goal to move to.
-   * @param current_motion The current motion.
+   * @brief monitored trajectory at time points containing Jacobians, Intertias, velocity capsules at time points.
    */
-  void goalPlanningRuckig(Motion& current_motion, Motion& goal_motion, Trajectory &long_term_trajectory);
+  LongTermTraj monitored_trajectory_;  
 
   /**
-   * @brief Compute the desired motion to be executed.
-   * @details This function updates the trajectory index of the long term trajectory and returns the next motion.
-   * @return Motion the desired motion to be executed.
+   * @brief verified_trajectory_index_ defines the current step on the verified trajectory.
    */
-  Motion SafetyShield::getDesiredMotion();
+  int verified_trajectory_index_ = 0;
 
   /**
-   * @brief Computes the potential trajectory consiting of one intended step and a braking trajectory.
-   * @details This function computes the potential trajectory based on the current motion and the desired motion.
-   * @return new Trajectory.
+   * @brief intended_trajectory_index_ defines the current step on the intended trajectory.
    */
-  void computePotentialTrajectoryRuckig(Motion& current_motion, Motion& desired_motion, Trajectory& potential_path);
+  int intended_trajectory_index_ = 0; // index of the long term trajectory
 
   /**
-   * @brief Verify the desired trajectory.
-   * @details This function checks if the desired trajectory is safe to execute and overrides the verified_trajectory_ if it is safe.
-   * @param desired_trajectory The desired trajectory to verify.
-   * @return true if the desired motion is safe, false otherwise.
+   * @brief Increments the verified_trajectory_index_.
+   * @details If the index is larger than the size of the verified trajectory, it is set to the last index. 
    */
-  bool SafetyShield::verifyTrajectory(Trajectory& potential_trajectory);
+  inline void SafetyShield::incrementVerifiedTrajectory(){
+    verified_trajectory_index_++;
+    if (verified_trajectory_index_ >= verified_trajectory_.size()) {
+      verified_trajectory_index_ = verified_trajectory_.size() - 1;
+    }
+  }
+
+  /**
+   * @brief Increments the intended_trajectory_index_.
+   * @details If the index is larger than the size of the intended trajectory, it is set to the last index.
+   */
+  inline void SafetyShield::incrementIntendedTrajectory(){
+    intended_trajectory_index_++;
+    if (intended_trajectory_index_ >= intended_trajectory_.size()) {
+      intended_trajectory_index_ = intended_trajectory_.size() - 1; 
+    }
+  }
+  
+  // move both trajectoryPlanningRuckig, computeFailsafeTrajectoryNonPathConsistent to planning_utils.h
+  /**
+   * @brief Computes a trajectory from the given motion to the goal motion using ruckig.
+   * @param start_motion The starting motion of the trajectory.
+   * @param goal_motion The goal motion of the trajectory.
+   * @returns planned trajectory as a vector of motions.
+   */
+  std::vector<Motion> trajectoryPlanningRuckig(const Motion& start_motion, const Motion& goal_motion);
+
+  /**
+   * @brief Computes a failsafe trajectory from the given motion to a full stop of the robot using ruckig.
+   * @details This function computes a failsafe trajectory that is not path-consistent using velocity control.
+   * @param start_motion The starting motion of the trajectory.
+   * @returns failsafe trajectory as a vector of motions.
+   */
+  std::vector<Motion> computeFailsafeTrajectoryNonPathConsistent(const Motion& start_motion);
+
+  /**
+   * @brief Construct a monitored trajectory consisting of one time step of the intended trajectory followed by a non path-consistent failsafe trajectory.
+   * @param current_motion The current motion of the robot.
+   * @param motion_after_intended_step The motion after the intended step.
+   * @return monitored trajectory as a vector of motions.
+   */
+  std::vector<Motion> computeMonitoredTrajectory(const Motion& current_motion, const Motion& motion_after_intended_step);
+
+  /**
+   * @brief Computes list of motions at the edges of the time intervals. 
+   * Updates monitored_trajectory_ and computes alpha_i, jacobians, transformation matrices, and inertia matrices for the motions.
+   * @param time_points Time points that define the edges of the time intervals.
+   * @param monitored_trajectory The monitored trajectory.
+   * @return  - unclear maybe discuss? 
+   */
+  void computeIntervalEdgeMotions(const std::vector<double> time_points, 
+                                                 const std::vector<Motion>& monitored_trajectory);
 
   /**
    * @brief Step the safety shield with non path consistent braking.
-   * @param cycle_begin_time timestep of begin of current cycle in seconds.
+   * - computes monitored trajectory, the time points, the interval edges motions, and the corresponding jacobians, transformation matrices, and inertia matrices at the time points.
    * @details This function is called in every cycle of the safety shield.
-   * @return next motion to be executed
+   * @return mointored trajectory - unclear maybe discuss?
    */
-  Motion SafetyShield::stepNonPathConistent(double cycle_begin_time);
+  std::vector<Motion> SafetyShield::stepNonPathConistent();
 
   /**
    * @brief Gets the information that the next simulation cycle (sample time) has started
+   * uses either stepNonPathConistent or stepPathConsistent depending on the shield type.
    * @param cycle_begin_time timestep of begin of current cycle in seconds.
-   *
    * @return next motion to be executed
    */
   Motion step(double cycle_begin_time);
