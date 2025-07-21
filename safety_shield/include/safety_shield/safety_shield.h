@@ -40,6 +40,8 @@
 #include "safety_shield/config_utils.h"
 #include "spdlog/spdlog.h"
 
+#include <ruckig/ruckig.hpp>
+
 #ifndef safety_shield_H
 #define safety_shield_H
 
@@ -548,15 +550,17 @@ class SafetyShield {
 
   // new variables
   /**
-   * @brief time points of equidistance intervals.
-   * @details the time points define edges of the intervals used for verification.
+   * @brief Bool to precompute dyanmics of the trajectry during goal planning.
+   * @details if true, dynamics are precomputed and stored in the long term trajectory.
+   * @details if false, dynamics are computed on the fly during verification. (Note currently we always precompute dynamics - update LTT or remove the bool and set fixed)
    */
-  std::vector<double>  time_points_;
+  bool precompute_dynamics_ = false;
   /**
-   * @brief interval_edges_motions contains the motions at the edges of the time intervals.
-   * @details This vector is used to compute the Jacobians, Inertias, and velocity capsules at the time points.
+   * @brief describes the stopping mode.
+   * @details if true, path consistent braking is used.
    */
-  std::vector<Motion> interval_edges_motions_;
+  bool path_consistent_ = true;
+
   /**
    * @brief intended_trajectory_ is the trajectory that the safety shield intends to follow to a goal_motion.
    * Note: this trajectory could also be used for Path Consistent braking to only compute the Jacobians, Inertias, and velocity capsules at the time points during verification later.
@@ -569,9 +573,13 @@ class SafetyShield {
   std::vector<Motion>  verified_trajectory_;
 
   /**
+   * @brief monitored_trajectory_ is a trajectory consisting of one time step of the intended trajectory followed by a non path-consistent failsafe trajectory.
+   */
+  std::vector<Motion>  monitored_trajectory_;
+  /**
    * @brief monitored trajectory at time points containing Jacobians, Intertias, velocity capsules at time points.
    */
-  LongTermTraj monitored_trajectory_;  
+  LongTermTraj monitored_trajectory_with_dynamics_;  
 
   /**
    * @brief verified_trajectory_index_ defines the current step on the verified trajectory.
@@ -584,24 +592,13 @@ class SafetyShield {
   int intended_trajectory_index_ = 0; // index of the long term trajectory
 
   /**
-   * @brief Increments the verified_trajectory_index_.
-   * @details If the index is larger than the size of the verified trajectory, it is set to the last index. 
+   * @brief Increments the trajectory index.
+   * @details If the index is larger than the size of the trajectory, it is set to the last index. 
    */
-  inline void SafetyShield::incrementVerifiedTrajectory(){
-    verified_trajectory_index_++;
-    if (verified_trajectory_index_ >= verified_trajectory_.size()) {
-      verified_trajectory_index_ = verified_trajectory_.size() - 1;
-    }
-  }
-
-  /**
-   * @brief Increments the intended_trajectory_index_.
-   * @details If the index is larger than the size of the intended trajectory, it is set to the last index.
-   */
-  inline void SafetyShield::incrementIntendedTrajectory(){
-    intended_trajectory_index_++;
-    if (intended_trajectory_index_ >= intended_trajectory_.size()) {
-      intended_trajectory_index_ = intended_trajectory_.size() - 1; 
+  inline void incrementTrajectory(int& trajectory_index_, const std::vector<Motion>& trajectory){
+    trajectory_index_++;
+    if (trajectory_index_ >= trajectory.size()) {
+      trajectory_index_ = trajectory.size() - 1;
     }
   }
   
@@ -632,22 +629,37 @@ class SafetyShield {
 
   /**
    * @brief Computes list of motions at the edges of the time intervals. 
-   * Updates monitored_trajectory_ and computes alpha_i, jacobians, transformation matrices, and inertia matrices for the motions.
+   * computes alpha_i, jacobians, transformation matrices, and inertia matrices for the motions.
    * @param time_points Time points that define the edges of the time intervals.
    * @param monitored_trajectory The monitored trajectory.
-   * @return  - unclear maybe discuss? 
+   * @return RobotTrajectory object containing the dynamics.
    */
-  void computeIntervalEdgeMotions(const std::vector<double> time_points, 
-                                                 const std::vector<Motion>& monitored_trajectory);
+  LongTermTraj computeIntervalEdgeMotions(const std::vector<Motion>& monitored_trajectory, const std::vector<double>& time_points);
 
   /**
    * @brief Step the safety shield with non path consistent braking.
    * - computes monitored trajectory, the time points, the interval edges motions, and the corresponding jacobians, transformation matrices, and inertia matrices at the time points.
    * @details This function is called in every cycle of the safety shield.
-   * @return mointored trajectory - unclear maybe discuss?
+   * @return mointored trajectory with dynamics 
    */
-  std::vector<Motion> SafetyShield::stepNonPathConistent();
+  LongTermTraj stepNonPathConistent(const Motion& current_motion);
+  /**
+   * @brief Step the safety shield with path consistent braking.
+   * options to either precompute the dynamics or not.
+   * - if precompute_dynamics_ is true, we take the precomputed dynamics from the long term trajectory.
+   * - if precompute_dynamics_ is false, we compute the dynamics on the fly. ToDO: add a version to create LTT without precomputed dynamics.
+   * computes monitored trajectory, the time points, the interval edges motions, and the corresponding jacobians, transformation matrices, and inertia matrices at the time points.
+   * @details This function is called in every cycle of the safety shield.
+   * @return mointored trajectory with dynamics
+   */
+  LongTermTraj stepPathConistent(const Motion& current_motion);
 
+  /**
+   * @brief Set the safety shield to non path consistent braking.
+   */
+  inline void setNonPathConsistent(){
+    path_consistent_ = false;
+  };
   /**
    * @brief Gets the information that the next simulation cycle (sample time) has started
    * uses either stepNonPathConistent or stepPathConsistent depending on the shield type.
@@ -686,19 +698,15 @@ class SafetyShield {
   void newGoalPlanning(Motion& current_motion);
 
   /**
-   * @brief verify the safety of the movement from the current motion to the goal motion.
+   * @brief verify the safety of the monitored trajectory.
    * 
    * @details If the shield mode is OFF, the function will always return true.
+   * This functions uses the monitored_trajectory_with_dynamics_ object to verify the safety of the trajectory.
    * This function sets robot_capsules_ and human_capsules_ needed for plotting.
-   * 
-   * @param[in] current_motion Current motion the robot is in.
-   * @param[in] goal_motion Goal motion the robot wants to move to.
-   * @param[in] alpha_i Maximum cartesian acceleration of robot joints
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifySafety(Motion& current_motion, Motion& goal_motion, const std::vector<double>& alpha_i);
-
+  bool verifySafety();
   /**
    * @brief verify if the contact energy constraint is satisfied
    * 
@@ -809,6 +817,14 @@ class SafetyShield {
   std::vector<Motion> getMotionsFromCurrentLTTandPath(const std::vector<double>& time_points);
 
   /**
+   * @brief builds the trajectory object and calculates the dynamics.
+   * 
+   * @param interval_edges_motion the motions at the edges of the time intervals.
+   * @details This function calculates the Jacobians, Inertias, and velocity capsules at the time points used for verification.
+   * @return LongTermTraj trajectory with dynamics.
+   */
+  LongTermTraj buildTrajectoryWithDynammics(const std::vector<Motion> &interval_edges_motion);
+  /**
    * @brief Calculate the list of link inertia matrices on the LTT based on the current path and the given time points.
    * 
    * @param time_points Time points to return the list of motions at.
@@ -854,6 +870,27 @@ class SafetyShield {
       capsules[i] = convertCapsule(robot_capsules_[i]);
     }
     return capsules;
+  }
+
+  /** Note: This function is mainly used for visualization and debugging.
+   * @brief Get the Robot Reach Capsules as a vector of [p1[0:3], p2[0:3], r] for each intervall of the monitored trajectory
+   * p1: Center point of half sphere 1
+   * p2: Center point of half sphere 2
+   * r: Radius of half spheres and cylinder
+   *
+   * @return std::vector<std::vector<std::vector<double>>> Capsules
+   */
+
+  inline std::vector<std::vector<std::vector<double>>> getAllRobotReachCapsulesOverTime() {
+    std::vector<std::vector<std::vector<double>>> all_capsules;
+    for (const auto& timestep_capsules : robot_capsules_time_intervals_) {
+      std::vector<std::vector<double>> converted_capsules;
+      for (const auto& capsule : timestep_capsules) {
+        converted_capsules.push_back(convertCapsule(capsule));
+      }
+      all_capsules.push_back(converted_capsules);
+    }
+    return all_capsules;
   }
 
   /**

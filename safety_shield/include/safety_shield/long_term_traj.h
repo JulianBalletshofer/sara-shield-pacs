@@ -57,8 +57,8 @@ class LongTermTraj {
    * @brief The long term trajectory.
    */
   std::vector<Motion> long_term_traj_;
-
   
+
   /**
    * @brief maximum joint velocity allowed
    */
@@ -322,7 +322,7 @@ class LongTermTraj {
   inline int getNbModules() const {
     return nb_modules_;
   }
-
+  
   /**
    * @brief Get the current index of the LTT
    *
@@ -486,6 +486,20 @@ class LongTermTraj {
   inline Motion getMotion(unsigned long index) const {
     return long_term_traj_.at(index);
   }
+
+  /**
+   * @brief get trajectory as vector of motions
+   * @return std::vector<Motion> trajectory as vector of motions at each time step
+   */
+  inline std::vector<Motion> getTrajectory() const {
+    return long_term_traj_;
+  }
+
+  /**
+   * @brief get all time points of motions
+   * @return std::vector<double> time points of the trajectory
+   */
+  std::vector<double> getTimePoints();
 
   /**
    * @brief gets the inertia matrices of the robot links in a given time step

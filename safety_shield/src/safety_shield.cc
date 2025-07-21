@@ -127,6 +127,10 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
   Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
   next_motion_ = determineNextMotion(is_safe_);
   spdlog::info("Safety shield created.");
+
+  verified_trajectory_ = computeFailsafeTrajectoryNonPathConsistent(Motion(0.0, init_qpos));
+  intended_trajectory_ = trajectoryPlanningRuckig(Motion(0.0, init_qpos),goal_motion);
+  new_goal_motion_ = goal_motion;
 }
 
 void SafetyShield::reset(double init_x, double init_y, double init_z, double init_roll, double init_pitch,
@@ -488,124 +492,279 @@ bool SafetyShield::checkMotionForJointLimits(Motion& motion) {
 
 Motion SafetyShield::determineNextMotion(bool is_safe) {
   Motion next_motion;
-  double s_d, ds_d, dds_d, ddds_d;
-  if (is_safe) {
-    // Fill potential buffer with position and velocity from recovery path
-    if (recovery_path_.getPosition() >= failsafe_path_.getPosition()) {
-      s_d = recovery_path_.getPosition();
-      ds_d = recovery_path_.getVelocity();
-      dds_d = recovery_path_.getAcceleration();
-      ddds_d = recovery_path_.getJerk();
-    } else {
-      potential_path_.increment(sample_time_);
-      s_d = potential_path_.getPosition();
-      ds_d = potential_path_.getVelocity();
-      dds_d = potential_path_.getAcceleration();
-      ddds_d = potential_path_.getJerk();
-    }
+  if(path_consistent_){
+    double s_d, ds_d, dds_d, ddds_d;
+    if (is_safe) {
+      // Fill potential buffer with position and velocity from recovery path
+      if (recovery_path_.getPosition() >= failsafe_path_.getPosition()) {
+        s_d = recovery_path_.getPosition();
+        ds_d = recovery_path_.getVelocity();
+        dds_d = recovery_path_.getAcceleration();
+        ddds_d = recovery_path_.getJerk();
+      } else {
+        potential_path_.increment(sample_time_);
+        s_d = potential_path_.getPosition();
+        ds_d = potential_path_.getVelocity();
+        dds_d = potential_path_.getAcceleration();
+        ddds_d = potential_path_.getJerk();
+      }
 
-    // Interpolate from new long term buffer
-    if (new_ltt_) {
-      next_motion = new_long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
+      // Interpolate from new long term buffer
+      if (new_ltt_) {
+        next_motion = new_long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
+      } else {
+        next_motion =
+            long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
+      }
+      // Set potential path as new verified safe path
+      safe_path_ = potential_path_;
     } else {
+      // interpolate from old safe path
+      safe_path_.increment(sample_time_);
+      s_d = safe_path_.getPosition();
+      ds_d = safe_path_.getVelocity();
+      dds_d = safe_path_.getAcceleration();
+      ddds_d = safe_path_.getJerk();
       next_motion =
           long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
     }
-    // Set potential path as new verified safe path
-    safe_path_ = potential_path_;
-  } else {
-    // interpolate from old safe path
-    safe_path_.increment(sample_time_);
-    s_d = safe_path_.getPosition();
-    ds_d = safe_path_.getVelocity();
-    dds_d = safe_path_.getAcceleration();
-    ddds_d = safe_path_.getJerk();
-    next_motion =
-        long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
+    /// !!! Set s to the new path position !!!
+    path_s_ = s_d;
   }
-  /// !!! Set s to the new path position !!!
-  path_s_ = s_d;
+  else{
+    if(is_safe){
+      // only override if planning was sucessful and safe
+      verified_trajectory_ = monitored_trajectory_;
+      verified_trajectory_index_ = 0;
+    }
+    incrementTrajectory(verified_trajectory_index_,verified_trajectory_);
+    next_motion =  verified_trajectory_[verified_trajectory_index_];
+  }
   // Return the calculated next motion
   return next_motion;
 }
 
-void computeIntervalEdgeMotions(const std::vector<double> time_points, 
-                                                 const std::vector<Motion>& monitored_trajectory){
-// select interval edge motions at time points of monitored trajectory
-// create monitored_trajectory_ object used for verification containing jacobians, inertia, alpha_i, betha_i
+std::vector<Motion> SafetyShield::trajectoryPlanningRuckig(const Motion& start_motion, const Motion& goal_motion){
+  // Create Ruckig trajectory planner
+  ruckig::Ruckig<ruckig::DynamicDOFs> otg(nb_joints_, sample_time_);
+  ruckig::InputParameter<ruckig::DynamicDOFs> input(nb_joints_);
+  ruckig::OutputParameter<ruckig::DynamicDOFs> output(nb_joints_);
+  // Set input parameters
+  input.current_position = start_motion.getAngle();
+  input.current_velocity = start_motion.getVelocity();
+  input.current_acceleration = start_motion.getAcceleration();
+  input.target_position = goal_motion.getAngle();
+  input.target_velocity = goal_motion.getVelocity(); 
+  input.target_acceleration = goal_motion.getAcceleration();
+  input.max_velocity = v_max_allowed_;
+  input.max_acceleration =a_max_allowed_; //a_max_ltt_;
+  input.max_jerk = j_max_allowed_;//j_max_ltt_;
+  // Validate input parameters
+  try {
+      otg.validate_input(input,false,true);
+  } catch (const std::exception& e) {
+      spdlog::error("Ruckig input validation failed: {}", e.what());
+      return {};
+  }
+  // Calculate the trajectory
+  auto result = otg.calculate(input, output.trajectory);
+  if (result != ruckig::Result::Working) {
+    spdlog::error("Ruckig trajectory planning failed with result: {}", static_cast<int>(result));
+    return {};
+  }
+  // Convert the output trajectory to a vector of Motion objects
+  const double total_time = output.trajectory.get_duration();
+  size_t num_samples = static_cast<size_t>(std::ceil(total_time / sample_time_)) + 1;
 
-                                                }
+  std::vector<Motion> planned_trajectory(num_samples);
+  std::vector<double> q(nb_joints_);
+  std::vector<double> dq(nb_joints_);
+  std::vector<double> ddq(nb_joints_);
+  std::vector<double> dddq(nb_joints_);
+
+  size_t new_section = 0;
+  double t_sample = 0.0;
+  
+  for (size_t i = 0; i < num_samples; i++) {
+      output.trajectory.at_time(t_sample, q, dq, ddq, dddq, new_section);
+      planned_trajectory[i] = Motion(t_sample, q, dq, ddq, dddq,t_sample);
+      t_sample += sample_time_;
+  }
+  return planned_trajectory;
+}
+
+std::vector<Motion> SafetyShield::computeFailsafeTrajectoryNonPathConsistent(const Motion& start_motion){
+  // Create Ruckig trajectory planner
+  ruckig::Ruckig<ruckig::DynamicDOFs> otg(nb_joints_, sample_time_);
+  ruckig::InputParameter<ruckig::DynamicDOFs> input(nb_joints_);
+  ruckig::OutputParameter<ruckig::DynamicDOFs> output(nb_joints_);
+  // Set input parameters
+  input.control_interface = ruckig::ControlInterface::Velocity;
+  input.synchronization  = ruckig::Synchronization::Time; // dicuss whether we want this
+  input.current_position = start_motion.getAngle();
+  input.current_velocity = start_motion.getVelocity();
+  input.current_acceleration = start_motion.getAcceleration();
+  input.target_velocity = std::vector<double>(nb_joints_, 0.0); 
+  input.target_acceleration = std::vector<double>(nb_joints_, 0.0);
+  input.max_velocity = v_max_allowed_;
+  input.max_acceleration = a_max_allowed_;
+  input.max_jerk = j_max_allowed_;
+  // Validate input parameters
+  try {
+      otg.validate_input(input,false,true);
+  } catch (const std::exception& e) {
+      spdlog::error("Ruckig input validation failed: {}", e.what());
+      return {};
+  }
+  // Calculate the trajectory
+  auto result = otg.calculate(input, output.trajectory);
+  if (result != ruckig::Result::Working) {
+    spdlog::error("Ruckig trajectory planning failed with result: {}", static_cast<int>(result));
+    return {};
+  }
+  // Convert the output trajectory to a vector of Motion objects
+  const double total_time = output.trajectory.get_duration();
+  size_t num_samples = static_cast<size_t>(std::ceil(total_time / sample_time_)) + 1;
+
+  std::vector<Motion> failsafe_trajectory(num_samples);
+  std::vector<double> q(nb_joints_);
+  std::vector<double> dq(nb_joints_);
+  std::vector<double> ddq(nb_joints_);
+  std::vector<double> dddq(nb_joints_);
+
+  size_t new_section = 0;
+  double t_sample = 0.0;
+  
+  for (size_t i = 0; i < num_samples; i++) {
+      output.trajectory.at_time(t_sample, q, dq, ddq, dddq, new_section);
+      // we add sample_time_ as the failsafe trajectory starts after the intended step
+      failsafe_trajectory[i] = Motion(sample_time_ + t_sample, q, dq, ddq, dddq, sample_time_ + t_sample);
+      t_sample += sample_time_;
+  }
+  return failsafe_trajectory;
+}
+
+LongTermTraj SafetyShield::computeIntervalEdgeMotions(const std::vector<Motion>& monitored_trajectory, const std::vector<double>& time_points) {
+// Initialize the monitored trajectory with dynamics
+LongTermTraj monitored_trajectory_with_dynamics;  
+if (time_points.empty() || monitored_trajectory.empty()) {
+      spdlog::warn("Empty input: time_points.size() = {}, monitored_trajectory.size() = {}",
+                  time_points.size(), monitored_trajectory.size());
+      return monitored_trajectory_with_dynamics;
+  }
+  std::vector<Motion> interval_edges_motions;
+  interval_edges_motions.reserve(time_points.size());
+  
+  interval_edges_motions.emplace_back(monitored_trajectory[0]);
+
+  std::size_t k = 1;
+  double t = sample_time_;
+  double eps = 1e-6;
+
+  for (std::size_t i = 1; i < monitored_trajectory.size() && k < time_points.size(); ++i, t += sample_time_)
+  {
+      if (std::fabs(t - time_points[k]) < eps) {  // reached next requested stamp
+          interval_edges_motions.emplace_back(monitored_trajectory[i]);
+          ++k;
+      }
+  }
+  monitored_trajectory_with_dynamics = buildTrajectoryWithDynammics(interval_edges_motions);
+  return monitored_trajectory_with_dynamics;
+ }
                 
-std::vector<Motion> computeMonitoredTrajectory(const Motion& current_motion, const Motion& motion_after_intended_step){
-  // compute failsafe path from motion_after_intended_step - computeFailsafeTrajectoryNonPathConsistent(const Motion& start_motion)
-  // construct monitored trajectory as vector of motions with current_motion and motion_after_intended_step and the failsafe path
-  // return monitored trajectory 
+std::vector<Motion> SafetyShield::computeMonitoredTrajectory(const Motion& current_motion, const Motion& motion_after_intended_step){
+  std::vector<Motion> failsafe_trajectory = computeFailsafeTrajectoryNonPathConsistent(motion_after_intended_step);
+  std::vector<Motion> monitored_trajectory;
+  monitored_trajectory.reserve(1 + failsafe_trajectory.size());
+  monitored_trajectory.push_back(current_motion);
+  monitored_trajectory.insert(monitored_trajectory.end(),
+                              std::make_move_iterator(failsafe_trajectory.begin()),
+                              std::make_move_iterator(failsafe_trajectory.end()));
+  return monitored_trajectory; 
 }
 
 // slightly different from the original code, but now more flexible to be used in NonPathConsistent and PathConsistent
 bool SafetyShield::verifySafety(){
-  // get alpha_i from long term trajectory or monitored trajectory if non path consistent
-  // compute robot capsules at interval edges
-  // robot_capsules_time_intervals_ = robot_reach_->reachTimeIntervals(interval_edges_motions_, alpha_i);
-  // // Compute the human reachable sets for the potential trajectory
-  // // humanReachabilityAnalysis(t_command, t_brake)
-  // human_capsules_time_intervals_ = human_reach_->humanReachabilityAnalysisTimeIntervals(cycle_begin_time_, time_points_);
-  // int collision_index = -1;
-  // if (shield_type_ == ShieldType::PFL) {
-  //   is_safe = verifyContactEnergySafetyByContactType(time_points_, interval_edges_motions_, collision_index);
-  //   /*
-  //   // is_safe = unconstrainedContactConstraint AND constrainedContactConstraint
-  //   is_safe = verifyContactEnergySafety(time_points, interval_edges_motions, collision_index);
-  //   // Weird way of writing AND to make sure that the collision index is set to the correct value.
-  //   if (is_safe) {
-  //     is_safe = verifyConstrainedContactSafety(time_points_, interval_edges_motions_, collision_index);    
-  //   }
-  // } else {
-  //   // Verify if the robot and human reachable sets are collision free
-  //   is_safe = verify_->verifyHumanReachTimeIntervals(robot_capsules_time_intervals_, human_capsules_time_intervals_, collision_index);
-  // }
-  // // for visualization in hrgym, reachability sets of last timestep are used
-  // if (is_safe) {
-  //   robot_capsules_ = robot_capsules_time_intervals_[robot_capsules_time_intervals_.size()-1];
-  //   human_capsules_ = human_capsules_time_intervals_[human_capsules_time_intervals_.size()-1];
-  // } else {
-  //   robot_capsules_ = robot_capsules_time_intervals_[collision_index];
-  //   human_capsules_ = human_capsules_time_intervals_[collision_index];
-  // }
-  // return is_safe;
+  if (shield_type_ == ShieldType::OFF) {
+    return true;
+  }
+  std::vector<Motion> interval_edges_motions = monitored_trajectory_with_dynamics_.getTrajectory();
+  std::vector<double> time_points = monitored_trajectory_with_dynamics_.getTimePoints();
+  // goal motion always the last motion of the interval_edges_motions_
+  Motion goal_motion = interval_edges_motions.back();
+  if (!checkMotionForJointLimits(goal_motion)) {
+    return false;
+  }
+  bool is_safe = false;
+  std::vector<double> alpha_i = monitored_trajectory_with_dynamics_.getAlphaI();
+
+  robot_capsules_time_intervals_ = robot_reach_->reachTimeIntervals(interval_edges_motions, alpha_i);
+  human_capsules_time_intervals_ = human_reach_->humanReachabilityAnalysisTimeIntervals(cycle_begin_time_, time_points);
+  int collision_index = -1;
+  if (shield_type_ == ShieldType::PFL) {
+    // Verify Enegry limits of potential contact scenarios
+    is_safe = verifyContactEnergySafetyByContactType(time_points, interval_edges_motions, collision_index);
+  } else {
+    // Verify if the robot and human reachable sets are collision free
+    is_safe = verify_->verifyHumanReachTimeIntervals(robot_capsules_time_intervals_, human_capsules_time_intervals_, collision_index);
+  }
+  // for visualization in hrgym, reachability sets of last timestep are used
+  if (is_safe) {
+    robot_capsules_ = robot_capsules_time_intervals_[robot_capsules_time_intervals_.size()-1];
+    human_capsules_ = human_capsules_time_intervals_[human_capsules_time_intervals_.size()-1];
+  } else {
+    robot_capsules_ = robot_capsules_time_intervals_[collision_index];
+    human_capsules_ = human_capsules_time_intervals_[collision_index];
+  }
+  return is_safe;
 }
 
-std::vector<Motion> SafetyShield::stepNonPathConistent() {
-    // Get current motion - increment trajectory index - get current position from verified trajectory (verified trajectory is always computed from intended step + braking trajectory)
-    // incrementVerifiedTrajectory
-    // current_motion = verfied_trajectory_[verified_trajectory_index_];
+LongTermTraj SafetyShield::stepNonPathConistent(const Motion& current_motion) {
+    // If not safe or new goal is set, plan new intended trajectory
+    if (!is_safe_) {
+      // ToDo: Error with replanning if 2nd step on braking as acceleration highen than on ltt - issue
+      std::vector<Motion> intended_trajectory = trajectoryPlanningRuckig(current_motion, new_goal_motion_);
+      if (!intended_trajectory.empty()) {
+          intended_trajectory_ = intended_trajectory;  // Only assign if valid
+          intended_trajectory_index_ = 0;              // Reset index
+          spdlog::info("Replanned with {} steps", intended_trajectory_.size());
+      } else {
+          spdlog::warn("Replanning failed.");
+      }
+    }
 
-    // check if new goal is set or we are on braking trajectory - if so, plan new long term trajectory 
-    // if (!is_safe_ || !new_goal_) {
-    //   intended_trajectory_ = trajectoryPlanningRuckig(current_motion, new_goal_motion_); // we either plan back to the old goal (if on failsafe) or to a new goal
-    //   intended_trajectory_index_ = 0; // do planning sucess check before resetting
-    
+    // Get motion after intended step
+    incrementTrajectory(intended_trajectory_index_,intended_trajectory_);
+    Motion motion_after_intended_step = intended_trajectory_[intended_trajectory_index_];
 
-    // Get motion_after_intended_step - take desired motion from longterm trajectory or use input desired motion
-    // incrementIntendedTrajectory();
-    // motion_after_intended_step = intended_trajectory_[intended_trajectory_index_];
+    // Compute monitored trajectory (intended + failsafe)
+    monitored_trajectory_ = computeMonitoredTrajectory(current_motion, motion_after_intended_step);
 
-    // compute monitored trajectory - call 
-    // monitored_trajectoy = computeMonitoredTrajectory(const Motion& current_motion, const Motion& motion_after_intended_step)
-    
-    // compute Interval Edge Motions, jacobians, inertia, alpha_i, betha_i at time points of monitored trajectory 
-    // compute time_points_
-    // computeIntervalEdgeMotions(time_points_); // this stores the interval edge motions, the jacobians, inertia, alpha_i, betha_i used for verification
-    // return monitored_trajectory;
+    // Compute time points for monitored trajectory
+    const std::size_t N = monitored_trajectory_.size() - 1;
+    std::vector<double> time_points = calcTimePointsForEquidistantIntervals(0, sample_time_ * N, reachability_set_duration_);
+
+    LongTermTraj monitored_trajectory_with_dynamics;
+    // Compute interval edge motions + associated verification quantities
+    monitored_trajectory_with_dynamics = computeIntervalEdgeMotions(monitored_trajectory_, time_points);
+    // update long term trajectory with having time points and option to directly obtain the interval edge motions
+    return monitored_trajectory_with_dynamics;
 }
 
-Motion SafetyShield::step(double cycle_begin_time){
-  cycle_begin_time_ = cycle_begin_time;
-  // use either stepNonPathConistent or stepPathConistent based on type - this computes a mointored trajectory, time intervals, interval edge motions, jacobians, inertia, alpha_i, betha_i
-  // is_safe = verifySafety();
-  // update verified trajectory with monitored trajectory if safe else move on previous verified trajectory
-  // return next_motion_;
-}
+LongTermTraj SafetyShield::stepPathConistent(const Motion& current_motion){
+    // todo check this part - set up the monitored_trajectory_with_dynamics_ - maybe only for non path consistent for now.
+    // Compute a new potential trajectory
+    Motion goal_motion = computesPotentialTrajectory(is_safe_, next_motion_.getVelocity()); 
+    std::vector<double> time_points = calcTimePointsForEquidistantIntervals(current_motion.getTime(), goal_motion.getTime(), reachability_set_duration_);
+    // next step similar to other approach - could use interval_edges_motions to compute the dynamics to verify - no need for precomputation
+    std::vector<Motion> interval_edges_motions = getMotionsFromCurrentLTTandPath(time_points);
+    // we could create a monitored_trajectory_with_dynamics_ object or get the values from ltt and construct a trajectory directly with it without recacluation
+    LongTermTraj monitored_trajectory_with_dynamics;
+    if (!precompute_dynamics_){
+      monitored_trajectory_with_dynamics = buildTrajectoryWithDynammics(interval_edges_motions);
+    }
+    return monitored_trajectory_with_dynamics;
+  }
 
 
 Motion SafetyShield::step(double cycle_begin_time) {
@@ -615,22 +774,24 @@ Motion SafetyShield::step(double cycle_begin_time) {
     Motion current_motion = getCurrentMotion();
     std::vector<double> alpha_i;
     evaluateNewLTTProcessed(current_motion);
-    // Check if there is a new goal motion
-    if (new_goal_) {
-      newGoalPlanning(current_motion);
-    }
-    if (new_ltt_) {
-      alpha_i = new_long_term_trajectory_.getAlphaI();
-    } else {
-      alpha_i = long_term_trajectory_.getAlphaI();
-    }
+    
     // If there is a new long term trajectory (LTT), always override is_safe with false.
     if (new_ltt_ && !new_ltt_processed_) {
       is_safe_ = false;
     }
-    // Compute a new potential trajectory
-    Motion goal_motion = computesPotentialTrajectory(is_safe_, next_motion_.getVelocity());
-    is_safe_ = verifySafety(current_motion, goal_motion, alpha_i);
+    // Check if there is a new goal motion
+    if (new_goal_) {
+      newGoalPlanning(current_motion);
+    }
+    // build monitored_trajectory_with_dynamics_
+   
+    if(path_consistent_){
+     monitored_trajectory_with_dynamics_ = stepPathConistent(current_motion);
+    }
+    else{
+     monitored_trajectory_with_dynamics_ = stepNonPathConistent(current_motion);
+    }
+    is_safe_ = verifySafety();
     // Select the next motion based on the verified safety
     next_motion_ = determineNextMotion(is_safe_);
     next_motion_.setTime(cycle_begin_time);
@@ -656,10 +817,14 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     throw std::logic_error("SafetyShield::newGoalPlanning called without new goal.");
   }
   // Check if current motion has acceleration and jerk values that lie in the plannable ranges
-  if (!checkCurrentMotionForReplanning(current_motion)) {
+  if (!checkCurrentMotionForReplanning(current_motion)&&path_consistent_) {
     new_ltt_ = false;
+    if (!path_consistent_){
+      spdlog::info("motion limits of current motion not replannable");
+    }
     return;
   }
+  if (path_consistent_){
   // Check if the starting position of the last replanning was very close to the current position
   bool last_close = new_ltt_ && abs(path_s_ - last_replan_s_) < sample_time_;
   // Only replan if the current joint position is different from the last.
@@ -684,55 +849,15 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     new_ltt_processed_ = false;
   } else {
     new_ltt_ = false;
+    spdlog::info("replanned path consistent");
+  }}
+  else{
+    intended_trajectory_ = trajectoryPlanningRuckig(current_motion, new_goal_motion_);
+    intended_trajectory_index_ = 0; // Reset index
+    new_goal_ = false;     
+    spdlog::info("replanned path consistent"); 
   }
 }
-
-bool SafetyShield::verifySafety(Motion& current_motion, Motion& goal_motion, const std::vector<double>& alpha_i) {
-  if (shield_type_ == ShieldType::OFF) {
-    return true;
-  }
-  // Check motion for joint limits (goal motion needed here as it is end of failsafe)
-  if (!checkMotionForJointLimits(goal_motion)) {
-    return false;
-  }
-  bool is_safe = false;
-  // Compute the robot reachable set for the potential trajectory
-  std::vector<double> time_points = calcTimePointsForEquidistantIntervals(current_motion.getTime(), goal_motion.getTime(), reachability_set_duration_);
-  std::vector<Motion> interval_edges_motions = getMotionsFromCurrentLTTandPath(time_points);
-  robot_capsules_time_intervals_ = robot_reach_->reachTimeIntervals(interval_edges_motions, alpha_i);
-  // Compute the human reachable sets for the potential trajectory
-  // humanReachabilityAnalysis(t_command, t_brake)
-  human_capsules_time_intervals_ = human_reach_->humanReachabilityAnalysisTimeIntervals(cycle_begin_time_, time_points);
-  int collision_index = -1;
-  if (shield_type_ == ShieldType::PFL) {
-    is_safe = verifyContactEnergySafetyByContactType(time_points, interval_edges_motions, collision_index);
-    /*
-    // is_safe = unconstrainedContactConstraint AND constrainedContactConstraint
-    is_safe = verifyContactEnergySafety(time_points, interval_edges_motions, collision_index);
-    // Weird way of writing AND to make sure that the collision index is set to the correct value.
-    if (is_safe) {
-      is_safe = verifyConstrainedContactSafety(time_points, interval_edges_motions, collision_index);    
-    }
-    */
-    // Debugging
-    // if (!is_safe) {
-    //   spdlog::warn("Collision detected at time point {} with robot EEF velocity {}.", time_points[collision_index], robot_link_velocities[collision_index][nb_joints_ - 1]);
-    // }
-  } else {
-    // Verify if the robot and human reachable sets are collision free
-    is_safe = verify_->verifyHumanReachTimeIntervals(robot_capsules_time_intervals_, human_capsules_time_intervals_, collision_index);
-  }
-  // for visualization in hrgym, reachability sets of last timestep are used
-  if (is_safe) {
-    robot_capsules_ = robot_capsules_time_intervals_[robot_capsules_time_intervals_.size()-1];
-    human_capsules_ = human_capsules_time_intervals_[human_capsules_time_intervals_.size()-1];
-  } else {
-    robot_capsules_ = robot_capsules_time_intervals_[collision_index];
-    human_capsules_ = human_capsules_time_intervals_[collision_index];
-  }
-  return is_safe;
-}
-
 bool SafetyShield::verifyContactEnergySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions, int& collision_index) {
   std::vector<std::vector<double>> maximal_contact_energies = human_reach_->getMaxContactEnergy();
   std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> inertias_beginning_of_intervals = 
@@ -799,20 +924,23 @@ void SafetyShield::buildRobotVelocityPointers(
     std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end) {
   for (int i = 0; i < interval_edges_motions.size()-1; i++) {
     // We don't move this loop to the verification class as we need to call the getVelocityCapsuleIterator function here.
-    if (new_ltt_) {
-      vel_cap_start.push_back(new_long_term_trajectory_.getVelocityCapsuleIterator(
-        new_long_term_trajectory_.getLowerIndex(interval_edges_motions[i].getS())));
-      vel_cap_end.push_back(new_long_term_trajectory_.getVelocityCapsuleIterator(
-        new_long_term_trajectory_.getUpperIndex(interval_edges_motions[i+1].getS())));
-    } else {
-      vel_cap_start.push_back(long_term_trajectory_.getVelocityCapsuleIterator(
-        long_term_trajectory_.getLowerIndex(interval_edges_motions[i].getS())));
-      vel_cap_end.push_back(long_term_trajectory_.getVelocityCapsuleIterator(
-        long_term_trajectory_.getUpperIndex(interval_edges_motions[i+1].getS())));
+    if (path_consistent_&&precompute_dynamics_){
+      if (new_ltt_) {
+        vel_cap_start.push_back(new_long_term_trajectory_.getVelocityCapsuleIterator(
+          new_long_term_trajectory_.getLowerIndex(interval_edges_motions[i].getS())));
+        vel_cap_end.push_back(new_long_term_trajectory_.getVelocityCapsuleIterator(
+          new_long_term_trajectory_.getUpperIndex(interval_edges_motions[i+1].getS())));
+      } else {
+        vel_cap_start.push_back(long_term_trajectory_.getVelocityCapsuleIterator(
+          long_term_trajectory_.getLowerIndex(interval_edges_motions[i].getS())));
+        vel_cap_end.push_back(long_term_trajectory_.getVelocityCapsuleIterator(
+          long_term_trajectory_.getUpperIndex(interval_edges_motions[i+1].getS())));
+      }
     }
-    // add for non path consistent - create velocity pointers from the mointored trajectory
-    // vel_cap_start.push_back(interval_edges_motions[i].getVelocityCapsuleIterator());
-    // vel_cap_end.push_back(interval_edges_motions[i+1].getVelocityCapsule
+    else{
+      vel_cap_start.push_back(monitored_trajectory_with_dynamics_.getVelocityCapsuleIterator(i));
+      vel_cap_end.push_back(monitored_trajectory_with_dynamics_.getVelocityCapsuleIterator(i+1));
+    }
   }
 }
 
@@ -839,12 +967,19 @@ bool SafetyShield::verifyConstrainedContactSafety(std::vector<double> time_point
 
 Motion SafetyShield::getCurrentMotion() {
   Motion current_pos;
-  if (!recovery_path_.isCurrent()) {
-    current_pos = long_term_trajectory_.interpolate(failsafe_path_.getPosition(), failsafe_path_.getVelocity(),
-                                                    failsafe_path_.getAcceleration(), failsafe_path_.getJerk());
-  } else {
-    current_pos = long_term_trajectory_.interpolate(recovery_path_.getPosition(), recovery_path_.getVelocity(),
-                                                    recovery_path_.getAcceleration(), recovery_path_.getJerk());
+  if(path_consistent_){
+    if (!recovery_path_.isCurrent()) {
+      current_pos = long_term_trajectory_.interpolate(failsafe_path_.getPosition(), failsafe_path_.getVelocity(),
+                                                      failsafe_path_.getAcceleration(), failsafe_path_.getJerk());
+    } else {
+      current_pos = long_term_trajectory_.interpolate(recovery_path_.getPosition(), recovery_path_.getVelocity(),
+                                                      recovery_path_.getAcceleration(), recovery_path_.getJerk());
+    }
+  }
+  else{
+    current_pos = verified_trajectory_[verified_trajectory_index_];
+    // we reset the time at each cycle
+    current_pos.setTime(0.0);
   }
   return current_pos;
 }
@@ -980,13 +1115,37 @@ std::vector<Motion> SafetyShield::getMotionsFromCurrentLTTandPath(const std::vec
 std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> SafetyShield::getInertiaMatricesFromCurrentLTTandPath(
   const std::vector<double>& time_points
 ) {
+  if (path_consistent_ && precompute_dynamics_){
   LongTermTraj& ltt = long_term_trajectory_;
   if (new_ltt_) {
     ltt = new_long_term_trajectory_;
   }
   return getInertiaMatricesOfAllTimeStepsFromPath(ltt, potential_path_, time_points);
-  // add for non path consistent - create inertia matrices from the mointored trajectory
-  // mointored_trajectory_.getInertiaMatrices(i)
+  }else{
+    std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> inertia_matrices;
+    inertia_matrices.push_back(monitored_trajectory_with_dynamics_.getInertiaMatrices(0));
+    for (int i = 1; i < time_points.size(); i++) {
+      inertia_matrices.push_back(monitored_trajectory_with_dynamics_.getInertiaMatrices(i));
+    }
+    return inertia_matrices;
+  }
 }
 
-}  // namespace safety_shield
+LongTermTraj SafetyShield::buildTrajectoryWithDynammics(const std::vector<Motion> &interval_edges_motion) {
+  LongTermTraj monitored_trajectory_with_dynamics;
+  if (shield_type_ == ShieldType::OFF || shield_type_ == ShieldType::SSM) {
+    monitored_trajectory_with_dynamics = LongTermTraj(
+      interval_edges_motion, sample_time_, path_s_discrete_, 
+      v_max_allowed_, a_max_allowed_, j_max_allowed_,
+      sliding_window_k_, alpha_i_max_
+    );
+  } else {
+    monitored_trajectory_with_dynamics = LongTermTraj(
+      interval_edges_motion, sample_time_, *robot_reach_, path_s_discrete_,
+      v_max_allowed_, a_max_allowed_, j_max_allowed_, sliding_window_k_
+    );
+  }
+  return monitored_trajectory_with_dynamics;
+}
+}
+  //namespace safety_shield
