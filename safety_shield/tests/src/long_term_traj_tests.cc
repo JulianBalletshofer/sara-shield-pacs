@@ -23,9 +23,9 @@ TEST_F(LongTermTrajTestIdx, ChangeTrajectoryTest) {
   std::vector<double> v0;
   std::vector<double> j0;
   for (int i = 0; i < n_joints; i++) {
-      p0.push_back(0.0);
-      v0.push_back(0.0);
-      j0.push_back(0.0);
+    p0.push_back(0.0);
+    v0.push_back(0.0);
+    j0.push_back(0.0);
   }
   std::vector<double> a0;
   a0.push_back(12);
@@ -339,7 +339,8 @@ TEST_F(LongTermTrajTestInterpolation, getMotionsOfAllTimeStepsFromPathTest) {
   std::array<double, 3> jerks = {1, 0, -1};
   path.setPhases(times, jerks);
   std::vector<double> time_points = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0};
-  std::vector<Motion> interval_edge_motions = getMotionsOfAllTimeStepsFromPath(long_term_trajectory_, path, time_points);
+  std::vector<Motion> interval_edge_motions =
+      getMotionsOfAllTimeStepsFromPath(long_term_trajectory_, path, time_points);
   EXPECT_EQ(interval_edge_motions.size(), time_points.size());
   EXPECT_NEAR(interval_edge_motions[0].getAngle()[0], 0.0, 1e-8);
   EXPECT_NEAR(interval_edge_motions[1].getAngle()[0], 0.02083333333, 1e-8);
@@ -391,12 +392,12 @@ TEST_F(LongTermTrajTest, InterpolateTestConst) {
   long_term_trajectory_.setJMaxAllowed(j_max_allowed);
   long_term_trajectory_.setLongTermTrajectory(motions, 0.001);
   // Slowing down on trajectory
-  double s = 0.001/2.0;
+  double s = 0.001 / 2.0;
   double ds = 0.7;
   double dds = -0.5;
   double ddds = -2;
   Motion motion_int = long_term_trajectory_.interpolate(s, ds, dds, ddds);
-  EXPECT_NEAR(motion_int.getAngle()[0], 0.001/2.0, 1e-8);
+  EXPECT_NEAR(motion_int.getAngle()[0], 0.001 / 2.0, 1e-8);
   EXPECT_NEAR(motion_int.getVelocity()[0], 0.7, 1e-8);
   EXPECT_NEAR(motion_int.getAcceleration()[0], -0.5, 1e-8);
   EXPECT_NEAR(motion_int.getJerk()[0], -2, 1e-5);
@@ -427,7 +428,7 @@ TEST_F(LongTermTrajTest, InterpolateTestStanding) {
   long_term_trajectory_.setJMaxAllowed(j_max_allowed);
   long_term_trajectory_.setLongTermTrajectory(motions, 0.001);
   // Stopped on trajectory
-  double s = 0.001/2.0;
+  double s = 0.001 / 2.0;
   double ds = 0.0;
   double dds = 0.0;
   double ddds = 0.0;
@@ -462,7 +463,7 @@ TEST_F(LongTermTrajTest, InterpolateTestStandingLTT) {
   long_term_trajectory_.setJMaxAllowed(j_max_allowed);
   long_term_trajectory_.setLongTermTrajectory(motions, 0.001);
   // Stopped on trajectory
-  double s = 0.001/2.0;
+  double s = 0.001 / 2.0;
   double ds = 0.0;
   double dds = 1.0;
   double ddds = 10.0;
@@ -509,6 +510,115 @@ TEST_F(LongTermTrajTest, InterpolateTestAcceleratingLTT) {
   EXPECT_NEAR(motion_int.getJerk()[0], 0.0, 1e-5);
 }
 
+TEST_F(LongTermTrajTest, getTimePointsOfTrajectoryTest) {
+  Motion motion1 =
+      Motion(0.0, {0.1, -0.2, 0.0, 0.3, -0.1, 0.2}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+
+  Motion motion2 = Motion(0.5, {0.9, 0.4, 0.7, 0.6, 0.3, 0.5}, {0.3, 0.2, 0.1, 0.1, 0.15, 0.05},
+                          {0.1, 0.05, 0.02, 0.03, 0.04, 0.02});
+  Motion motion3 =
+      Motion(0.7, {0.1, -0.2, 0.0, 0.3, -0.1, 0.2}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+
+  Motion motion4 = Motion(0.8, {0.9, 0.4, 0.7, 0.6, 0.3, 0.5}, {0.3, 0.2, 0.1, 0.1, 0.15, 0.05},
+                          {0.1, 0.05, 0.02, 0.03, 0.04, 0.02});
+  std::vector<Motion> motions = {motion1, motion2, motion3, motion4};
+  long_term_trajectory_.setLongTermTrajectory(motions, 0.1);
+  std::vector<double> time_points = long_term_trajectory_.getTimePoints();
+  EXPECT_EQ(time_points.size(), 4);
+  EXPECT_DOUBLE_EQ(time_points[0], 0.0);
+  EXPECT_DOUBLE_EQ(time_points[1], 0.5);
+  EXPECT_DOUBLE_EQ(time_points[2], 0.7);
+  EXPECT_DOUBLE_EQ(time_points[3], 0.8);
+}
+
+TEST_F(LongTermTrajTestVelocity, isDynamicsSetTest) {
+  Motion motion1 =
+      Motion(0.0, {0.1, -0.2, 0.0, 0.3, -0.1, 0.2}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+
+  Motion motion2 = Motion(0.5, {0.9, 0.4, 0.7, 0.6, 0.3, 0.5}, {0.3, 0.2, 0.1, 0.1, 0.15, 0.05},
+                          {0.1, 0.05, 0.02, 0.03, 0.04, 0.02});
+  Motion motion3 =
+      Motion(0.7, {0.1, -0.2, 0.0, 0.3, -0.1, 0.2}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+
+  Motion motion4 = Motion(0.8, {0.9, 0.4, 0.7, 0.6, 0.3, 0.5}, {0.3, 0.2, 0.1, 0.1, 0.15, 0.05},
+                          {0.1, 0.05, 0.02, 0.03, 0.04, 0.02});
+  std::vector<Motion> motions = {motion1, motion2, motion3, motion4};
+  std::vector<double> v_max_allowed = {2.0, 2.0, 2.0, 2.0, 2.0, 2.0};
+  std::vector<double> a_max_allowed = {10.0, 10.0, 10.0, 10.0, 10.0, 10.0};
+  std::vector<double> j_max_allowed = {100.0, 100.0, 100.0, 100.0, 100.0, 100.0};
+  double sample_time = 0.1;
+  double alpha_max = 5.0;
+  int starting_index = 0;
+  LongTermTraj ltt =
+      LongTermTraj(motions, sample_time, starting_index, v_max_allowed, a_max_allowed, j_max_allowed, alpha_max);
+  EXPECT_FALSE(ltt.isInertiaMatricesSet());
+  EXPECT_FALSE(ltt.isCapsuleVelocitiesSet());
+  EXPECT_FALSE(ltt.isBetaISet());
+  EXPECT_FALSE(ltt.isMaxAccWindowsSet());
+  EXPECT_FALSE(ltt.isMaxJerkWindowsSet());
+
+  ltt.setMaxAccJerkWindows(2);
+  ltt.setDynamics(robot_reach_exact_);
+  ltt.setAlphaBeta();
+
+  EXPECT_TRUE(ltt.isInertiaMatricesSet());
+  EXPECT_TRUE(ltt.isCapsuleVelocitiesSet());
+  EXPECT_TRUE(ltt.isBetaISet());
+  EXPECT_TRUE(ltt.isMaxAccWindowsSet());
+  EXPECT_TRUE(ltt.isMaxJerkWindowsSet());
+
+  EXPECT_TRUE(long_term_trajectory_exact_.isInertiaMatricesSet());
+  EXPECT_TRUE(long_term_trajectory_exact_.isCapsuleVelocitiesSet());
+  EXPECT_TRUE(long_term_trajectory_exact_.isBetaISet());
+  EXPECT_TRUE(long_term_trajectory_exact_.isMaxAccWindowsSet());
+  EXPECT_TRUE(long_term_trajectory_exact_.isMaxJerkWindowsSet());
+}
+
+TEST_F(LongTermTrajTestVelocity, DynamicsSettingTest) {
+  std::vector<Motion> mo_vec;
+  double sample_time = 0.001;
+  double t = 0.0;
+  for (int i = 1; i < 10; ++i) {
+    double dub = i;
+    std::vector<double> q = {dub, dub + 1, dub + 2, dub + 3, dub + 4, dub + 5};
+    mo_vec.push_back(Motion(t, q, q));
+    t += sample_time;
+  }
+  std::vector<double> large_values = {10000.0, 10000.0, 10000.0, 10000.0, 10000.0, 10000.0};
+
+  LongTermTraj long_term_exact =
+      LongTermTraj(mo_vec, 0.001, robot_reach_exact_, 0, large_values, large_values, large_values);
+  LongTermTraj ltt = LongTermTraj(mo_vec, 0.001, 0, large_values, large_values, large_values, 1.0);
+
+  ltt.setMaxAccJerkWindows(10);
+  ltt.setDynamics(robot_reach_exact_);
+  ltt.setAlphaBeta();
+
+  auto alpha_i = ltt.getAlphaI();
+  auto expected_alpha_i = long_term_exact.getAlphaI();
+  EXPECT_EQ(alpha_i.size(), expected_alpha_i.size());
+  for (size_t i = 0; i < alpha_i.size(); ++i) {
+    EXPECT_NEAR(alpha_i[i], expected_alpha_i[i], 1e-5);
+  }
+
+  auto beta_i = ltt.getBetaI();
+  auto expected_beta_i = long_term_exact.getBetaI();
+  EXPECT_EQ(beta_i.size(), expected_beta_i.size());
+  for (size_t i = 0; i < beta_i.size(); ++i) {
+    EXPECT_NEAR(beta_i[i], expected_beta_i[i], 1e-5);
+  }
+
+  const auto& actual_matrices = ltt.getInertiaMatricesAtBeginningOfIntervals();
+  const auto& expected_matrices = long_term_exact.getInertiaMatricesAtBeginningOfIntervals();
+  EXPECT_EQ(actual_matrices.size(), expected_matrices.size());
+  for (size_t i = 0; i < actual_matrices.size(); ++i) {
+    EXPECT_EQ(actual_matrices[i].size(), expected_matrices[i].size());
+    for (size_t j = 0; j < actual_matrices[i].size(); ++j) {
+      EXPECT_TRUE(actual_matrices[i][j].isApprox(expected_matrices[i][j], 1e-5));
+    }
+  }
+}
+
 TEST_F(LongTermTrajInterpolateWithVelocityTest, InterpolateWithCartVelTest) {
   Motion motion_int = long_term_trajectory_.interpolate(0.01, 1.0, 0.0, 0.0);
   EXPECT_NEAR(motion_int.getAngle()[0], 0.010049833333333, 1e-5);
@@ -546,15 +656,15 @@ TEST_F(LongTermTrajInterpolateWithVelocityTest, getInertiaMatricesOfAllTimeSteps
   std::array<double, 3> jerks = {1, 0, -1};
   path.setPhases(times, jerks);
   std::vector<double> time_points = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0};
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> inertia_matrices = getInertiaMatricesOfAllTimeStepsFromPath(long_term_trajectory_, path, time_points);
+  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> inertia_matrices =
+      getInertiaMatricesOfAllTimeStepsFromPath(long_term_trajectory_, path, time_points);
   EXPECT_EQ(inertia_matrices.size(), time_points.size());
   EXPECT_EQ(inertia_matrices[0].size(), 1);
 }
 
+}  // namespace safety_shield
 
-} // namespace safety_shield
-
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
