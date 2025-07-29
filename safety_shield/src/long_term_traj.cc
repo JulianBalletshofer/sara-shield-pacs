@@ -196,7 +196,7 @@ void LongTermTraj::calculateAlphaBeta() {
   }
 }
 
-std::vector<double> LongTermTraj::getTimePoints() {
+std::vector<double> LongTermTraj::getTimePoints() const {
   std::vector<double> time_points;
   time_points.reserve(length_);
   for (const auto& motion : long_term_traj_) {
@@ -204,6 +204,5 @@ std::vector<double> LongTermTraj::getTimePoints() {
   }
   return time_points;
 }
-
 
 }  // namespace safety_shield

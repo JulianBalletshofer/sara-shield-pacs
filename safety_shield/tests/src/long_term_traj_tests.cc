@@ -557,9 +557,9 @@ TEST_F(LongTermTrajTestVelocity, isDynamicsSetTest) {
   EXPECT_FALSE(ltt.isMaxAccWindowsSet());
   EXPECT_FALSE(ltt.isMaxJerkWindowsSet());
 
-  ltt.setMaxAccJerkWindows(2);
-  ltt.setDynamics(robot_reach_exact_);
-  ltt.setAlphaBeta();
+  ltt.computeMaxAccJerkWindows(2);
+  ltt.computeDynamics(robot_reach_exact_);
+  ltt.computeAlphaBeta();
 
   EXPECT_TRUE(ltt.isInertiaMatricesSet());
   EXPECT_TRUE(ltt.isCapsuleVelocitiesSet());
@@ -590,9 +590,9 @@ TEST_F(LongTermTrajTestVelocity, DynamicsSettingTest) {
       LongTermTraj(mo_vec, 0.001, robot_reach_exact_, 0, large_values, large_values, large_values);
   LongTermTraj ltt = LongTermTraj(mo_vec, 0.001, 0, large_values, large_values, large_values, 1.0);
 
-  ltt.setMaxAccJerkWindows(10);
-  ltt.setDynamics(robot_reach_exact_);
-  ltt.setAlphaBeta();
+  ltt.computeMaxAccJerkWindows(10);
+  ltt.computeDynamics(robot_reach_exact_);
+  ltt.computeAlphaBeta();
 
   auto alpha_i = ltt.getAlphaI();
   auto expected_alpha_i = long_term_exact.getAlphaI();

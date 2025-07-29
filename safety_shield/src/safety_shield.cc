@@ -54,8 +54,8 @@ SafetyShield::SafetyShield(int nb_joints, double sample_time, double max_s_stop,
   next_motion_ = determineNextMotion(is_safe_);
   std::vector<double> q_min(nb_joints, -3.141);
   std::vector<double> q_max(nb_joints, -3.141);
-  ltp_ =
-      long_term_planner::LongTermPlanner(nb_joints, sample_time, q_min, q_max, v_max_allowed, a_max_path, j_max_path);
+  ltp_ = long_term_planner::LongTermPlanner(nb_joints, sample_time, q_min, q_max, v_max_allowed,
+                                            a_max_path, j_max_path);
   reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
   buildMaxContactEnergies();
   spdlog::info("Safety shield created.");
@@ -97,33 +97,33 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
   for (int i = 0; i < nb_joints_; i++) {
     prev_dq.push_back(0.0);
   }
+  spdlog::info("Safety shield with non path consistent braking created.");
   if (shield_type_ == ShieldType::OFF) {
     is_safe_ = true;
   } else {
     is_safe_ = false;
   }
+  // initialize goal with the current state
+  Motion init_motion = Motion(0.0, init_qpos);
+  std::vector<Motion> initial_traj;
+  initial_traj.push_back(init_motion);
+  verified_trajectory_ = initial_traj;
+  verified_trajectory_index_ = 0;
   if (path_consistent_) {
+    // Initialize the long term trajectory
     std::vector<Motion> long_term_traj;
-    long_term_traj.push_back(Motion(0.0, init_qpos));
-    if (shield_type_ == ShieldType::SSM || shield_type_ == ShieldType::OFF) {
-      long_term_trajectory_ = LongTermTraj(long_term_traj, sample_time_, path_s_discrete_, v_max_allowed_,
-                                           a_max_allowed_, j_max_allowed_, sliding_window_k_, alpha_i_max_);
-    } else {
-      long_term_trajectory_ = LongTermTraj(long_term_traj, sample_time_, *robot_reach_, path_s_discrete_,
-                                           v_max_allowed_, a_max_allowed_, j_max_allowed_, sliding_window_k_);
-    }
-    Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
+    long_term_traj.push_back(init_motion);
+    long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
+    incrementPaths(is_safe_);
     next_motion_ = determineNextMotion(is_safe_);
-    spdlog::info("Safety shield with path consistent braking created.");
+    spdlog::info("Safety shield with path consistent braking resetted.");
   } else {
-    // initialize goal with the current state
-    next_motion_ = Motion(0.0, init_qpos);
-    std::vector<Motion> initial_traj;
-    initial_traj.push_back(next_motion_);
     intended_trajectory_ = initial_traj;
-    verified_trajectory_ = initial_traj;
-    new_goal_motion_ = next_motion_;
-    spdlog::info("Safety shield with non path consistent braking created.");
+    intended_trajectory_index_ = 0;
+    // initialize goal and next motion with init motion
+    next_motion_ = init_motion;
+    new_goal_motion_ = init_motion;
+    spdlog::info("Safety shield with non path consistent braking resetted.");
   }
 }
 
@@ -157,28 +157,27 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
   failsafe_path_ = Path();
   failsafe_path_2_ = Path();
   safe_path_ = Path();
+
+  // initialize goal with the current state
+  Motion init_motion = Motion(0.0, init_qpos);
+  std::vector<Motion> initial_traj;
+  initial_traj.push_back(init_motion);
+  verified_trajectory_ = initial_traj;
+  verified_trajectory_index_ = 0;
   if (path_consistent_) {
     // Initialize the long term trajectory
     std::vector<Motion> long_term_traj;
-    long_term_traj.push_back(Motion(0.0, init_qpos));
-    if (shield_type_ == ShieldType::SSM || shield_type_ == ShieldType::OFF) {
-      long_term_trajectory_ = LongTermTraj(long_term_traj, sample_time_, path_s_discrete_, v_max_allowed_,
-                                           a_max_allowed_, j_max_allowed_, sliding_window_k_, alpha_i_max_);
-    } else {
-      long_term_trajectory_ = LongTermTraj(long_term_traj, sample_time_, *robot_reach_, path_s_discrete_,
-                                           v_max_allowed_, a_max_allowed_, j_max_allowed_, sliding_window_k_);
-    }
-    Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
+    long_term_traj.push_back(init_motion);
+    long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
+    incrementPaths(is_safe_);
     next_motion_ = determineNextMotion(is_safe_);
     spdlog::info("Safety shield with path consistent braking resetted.");
   } else {
-    // initialize goal with the current state
-    next_motion_ = Motion(0.0, init_qpos);
-    std::vector<Motion> initial_traj;
-    initial_traj.push_back(next_motion_);
     intended_trajectory_ = initial_traj;
-    verified_trajectory_ = initial_traj;
-    new_goal_motion_ = next_motion_;
+    intended_trajectory_index_ = 0;
+    // initialize goal and next motion with init motion
+    next_motion_ = init_motion;
+    new_goal_motion_ = init_motion;
     spdlog::info("Safety shield with non path consistent braking resetted.");
   }
 }
@@ -504,53 +503,32 @@ bool SafetyShield::checkTrajectoryForJointLimits(std::vector<Motion>& trajectory
   return true;
 }
 
+void SafetyShield::incrementPaths(bool is_safe) {
+  double s_d;
+  if (is_safe) {
+    if (recovery_path_.getPosition() >= failsafe_path_.getPosition()) {
+      s_d = recovery_path_.getPosition();
+    } else {
+      potential_path_.increment(sample_time_);
+      s_d = potential_path_.getPosition();
+    }
+    safe_path_ = potential_path_;
+  } else {
+    safe_path_.increment(sample_time_);
+    s_d = safe_path_.getPosition();
+  }
+  path_s_ = s_d;
+}
+
 Motion SafetyShield::determineNextMotion(bool is_safe) {
   Motion next_motion;
-  if (path_consistent_) {
-    double s_d, ds_d, dds_d, ddds_d;
-    if (is_safe) {
-      // Fill potential buffer with position and velocity from recovery path
-      if (recovery_path_.getPosition() >= failsafe_path_.getPosition()) {
-        s_d = recovery_path_.getPosition();
-        ds_d = recovery_path_.getVelocity();
-        dds_d = recovery_path_.getAcceleration();
-        ddds_d = recovery_path_.getJerk();
-      } else {
-        potential_path_.increment(sample_time_);
-        s_d = potential_path_.getPosition();
-        ds_d = potential_path_.getVelocity();
-        dds_d = potential_path_.getAcceleration();
-        ddds_d = potential_path_.getJerk();
-      }
-
-      // Interpolate from new long term buffer
-      if (new_ltt_) {
-        next_motion = new_long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
-      } else {
-        next_motion = long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
-      }
-      // Set potential path as new verified safe path
-      safe_path_ = potential_path_;
-    } else {
-      // interpolate from old safe path
-      safe_path_.increment(sample_time_);
-      s_d = safe_path_.getPosition();
-      ds_d = safe_path_.getVelocity();
-      dds_d = safe_path_.getAcceleration();
-      ddds_d = safe_path_.getJerk();
-      next_motion = long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
-    }
-    /// !!! Set s to the new path position !!!
-    path_s_ = s_d;
-  } else {
-    if (is_safe) {
-      // only override if planning was sucessful and safe
-      verified_trajectory_ = monitored_trajectory_;
-      verified_trajectory_index_ = 0;
-    }
-    incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
-    next_motion = verified_trajectory_[verified_trajectory_index_];
+  if (is_safe) {
+    // only override if planning was sucessful and safe
+    verified_trajectory_ = monitored_trajectory_;
+    verified_trajectory_index_ = 0;
   }
+  incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
+  next_motion = verified_trajectory_[verified_trajectory_index_];
   // Return the calculated next motion
   return next_motion;
 }
@@ -620,13 +598,11 @@ Motion SafetyShield::step(double cycle_begin_time) {
       newGoalPlanning(current_motion);
     }
     // compute monitored trajectory
-    std::vector<Motion> monitored_trajectory;
     if (path_consistent_) {
-      monitored_trajectory = stepPathConistent(current_motion);
+      monitored_trajectory_ = stepPathConistent(current_motion);
     } else {
       try {
-        monitored_trajectory = stepNonPathConistent(current_motion);
-        monitored_trajectory_ = monitored_trajectory;
+        monitored_trajectory_ = stepNonPathConistent(current_motion);
       } catch (const std::exception& e) {
         spdlog::warn("SafetyShield::step: stepNonPathConistent failed: {}", e.what());
         bool is_safe_ = false;
@@ -635,15 +611,21 @@ Motion SafetyShield::step(double cycle_begin_time) {
       }
     }
     // create time points for sparse vector of motions
-    const int N = monitored_trajectory.size() - 1;
+    const int N = monitored_trajectory_.size() - 1;
     std::vector<double> time_points_sparse =
         calcTimePointsForEquidistantIntervals(0, sample_time_ * N, reachability_set_duration_);
     // Compute interval edge motions
-    std::vector<Motion> interval_edges_motions = computeIntervalEdgeMotions(monitored_trajectory, time_points_sparse);
+    std::vector<Motion> interval_edges_motions =
+        computeIntervalEdgeMotions(monitored_trajectory_, time_points_sparse);
     // compute dynamics of interval edges motions
-    LongTermTraj sparse_trajectory = buildTrajectory(interval_edges_motions);
+    LongTermTraj sparse_trajectory =
+        buildTrajectory(interval_edges_motions, shield_type_ == ShieldType::PFL);
     // verify safety of the sparse trajectory
     is_safe_ = verifySafety(sparse_trajectory);
+    // update s_d for path consistent
+    if (path_consistent_) {
+      incrementPaths(is_safe_);
+    }
     // Select the next motion based on the verified safety
     next_motion_ = determineNextMotion(is_safe_);
     next_motion_.setTime(cycle_begin_time);
@@ -675,13 +657,16 @@ std::vector<Motion> SafetyShield::stepNonPathConistent(const Motion& current_mot
 std::vector<Motion> SafetyShield::stepPathConistent(const Motion& current_motion) {
   // Compute monitored trajectory
   Motion goal_motion = computesPotentialTrajectory(is_safe_, next_motion_.getVelocity());
+  // we have to start from time 0 as 1. in interpolation time will be set to 0 and 2. the time of
+  // goal motion equals to the time of full braking but not relative to current time - it is
+  // relative to 0
   std::vector<double> time_points_dense =
-      calcTimePointsForEquidistantIntervals(current_motion.getTime(), goal_motion.getTime(), sample_time_);
+      calcTimePointsForEquidistantIntervals(0.0, goal_motion.getTime(), sample_time_);
   std::vector<Motion> monitored_trajectory = getMotionsFromCurrentLTTandPath(time_points_dense);
   return monitored_trajectory;
 }
 
-bool SafetyShield::verifySafety(LongTermTraj& sparse_trajectory) {
+bool SafetyShield::verifySafety(const LongTermTraj& sparse_trajectory) {
   if (shield_type_ == ShieldType::OFF) {
     return true;
   }
@@ -796,8 +781,9 @@ bool SafetyShield::verifyContactVelocitySafety(std::vector<double> time_points,
   return is_safe;
 }
 
-bool SafetyShield::verifyContactEnergySafetyByContactType(LongTermTraj& sparse_trajectory,
-                                                          std::vector<double> time_points, int& collision_index) {
+bool SafetyShield::verifyContactEnergySafetyByContactType(const LongTermTraj& sparse_trajectory,
+                                                          std::vector<double> time_points,
+                                                          int& collision_index) {
   std::vector<Motion> interval_edges_motions = sparse_trajectory.getTrajectory();
   std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator> vel_cap_start, vel_cap_end;
   buildRobotVelocityPointers(sparse_trajectory, vel_cap_start, vel_cap_end);
@@ -817,7 +803,7 @@ bool SafetyShield::verifyContactEnergySafetyByContactType(LongTermTraj& sparse_t
 }
 
 void SafetyShield::buildRobotVelocityPointers(
-    LongTermTraj& sparse_trajectory,
+    const LongTermTraj& sparse_trajectory,
     std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_start,
     std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end) {
   for (int i = 0; i < sparse_trajectory.getLength() - 1; i++) {
@@ -852,19 +838,11 @@ bool SafetyShield::verifyConstrainedContactSafety(std::vector<double> time_point
 
 Motion SafetyShield::getCurrentMotion() {
   Motion current_pos;
-  if (path_consistent_) {
-    if (!recovery_path_.isCurrent()) {
-      current_pos = long_term_trajectory_.interpolate(failsafe_path_.getPosition(), failsafe_path_.getVelocity(),
-                                                      failsafe_path_.getAcceleration(), failsafe_path_.getJerk());
-    } else {
-      current_pos = long_term_trajectory_.interpolate(recovery_path_.getPosition(), recovery_path_.getVelocity(),
-                                                      recovery_path_.getAcceleration(), recovery_path_.getJerk());
-    }
-  } else {
-    current_pos = verified_trajectory_[verified_trajectory_index_];
-    // we reset the time at each cycle
-    current_pos.setTime(0.0);
-  }
+  current_pos = verified_trajectory_[verified_trajectory_index_];
+  // we reset the time at each cycle
+  // we can set time for both to 0 as done in interpolate however for ltt we keep the s parameter
+  // how to handel s - currently just time - guess we can safely do
+  current_pos.setTime(0.0);
   return current_pos;
 }
 
@@ -994,14 +972,15 @@ SafetyShield::getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>&
   return getInertiaMatricesOfAllTimeStepsFromPath(ltt, potential_path_, time_points);
 }
 
-LongTermTraj SafetyShield::buildTrajectory(const std::vector<Motion>& interval_edges_motion) {
+LongTermTraj SafetyShield::buildTrajectory(const std::vector<Motion>& interval_edges_motion,
+                                           bool compute_dynamics) {
   LongTermTraj trajectory;
-  if (shield_type_ == ShieldType::OFF || shield_type_ == ShieldType::SSM) {
-    trajectory = LongTermTraj(interval_edges_motion, sample_time_, path_s_discrete_, v_max_allowed_, a_max_allowed_,
-                              j_max_allowed_, sliding_window_k_, alpha_i_max_);
+  if (compute_dynamics) {
+    trajectory = LongTermTraj(interval_edges_motion, sample_time_, *robot_reach_, path_s_discrete_,
+                              v_max_allowed_, a_max_allowed_, j_max_allowed_, sliding_window_k_);
   } else {
-    trajectory = LongTermTraj(interval_edges_motion, sample_time_, *robot_reach_, path_s_discrete_, v_max_allowed_,
-                              a_max_allowed_, j_max_allowed_, sliding_window_k_);
+    trajectory = LongTermTraj(interval_edges_motion, sample_time_, path_s_discrete_, v_max_allowed_,
+                              a_max_allowed_, j_max_allowed_, sliding_window_k_, alpha_i_max_);
   }
   return trajectory;
 }

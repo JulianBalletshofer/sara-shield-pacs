@@ -531,7 +531,7 @@ class LongTermTraj {
    * @brief get all time points of motions
    * @return std::vector<double> time points of the trajectory
    */
-  std::vector<double> getTimePoints();
+  std::vector<double> getTimePoints() const;
 
   /**
    * @brief gets the inertia matrices of the robot links in a given time step
@@ -558,7 +558,7 @@ class LongTermTraj {
    *
    * @param index of motion in LTT
    */
-  inline std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator getVelocityCapsuleIterator(int index) {
+  inline std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator getVelocityCapsuleIterator(int index) const {
     // TODO: Use unsigned int
     if (index < 0 || index >= capsule_velocities_.size()) {
       throw std::out_of_range("Index out of range");
@@ -637,15 +637,15 @@ class LongTermTraj {
    * @brief sets the maximum acceleration and jerk windows of the LTT
    * @param sliding_window_k size of sliding window for max acc and jerk calculation
    */
-  inline void setMaxAccJerkWindows(int sliding_window_k) {
+  inline void computeMaxAccJerkWindows(int sliding_window_k) {
     calculateMaxAccJerkWindow(long_term_traj_, sliding_window_k);
   }
-
+  
   /**
    * @brief sets the alpha and beta values of the robot links in each time interval
    * @throws std::runtime_error if capsule velocities are not set
    */
-  inline void setAlphaBeta() {
+  inline void computeAlphaBeta() {
     // check if capsule velocities are set
     if (!isCapsuleVelocitiesSet()) {
       throw std::runtime_error("Capsule velocities are not set. Cannot calculate alpha and beta.");
@@ -659,7 +659,7 @@ class LongTermTraj {
    * @brief sets the inertia matrices and capsule velocities of the robot links in each time interval
    * @param[in] robot_reach used to calculate jacobians and velocities
    */
-  inline void setDynamics(RobotReach& robot_reach) {
+  inline void computeDynamics(RobotReach& robot_reach) {
     inertia_matrices_.clear();
     capsule_velocities_.clear();
     velocitiesOfAllMotions(robot_reach);

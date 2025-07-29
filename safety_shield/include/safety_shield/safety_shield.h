@@ -383,9 +383,6 @@ class SafetyShield {
 
   /**
    * @brief Calculate the next desired joint position based on verification.
-   * For Path Consistent:
-   * This is the next motion of the current path (failsafe or recovery).
-   * For Non Path Consistent:
    * If is_safe_ we replace old verified trajectory with the verified monitored trajectory and reset the index.
    * If not safe, we keep the old verified trajectory.
    * We increment the verified trajectory index and return the next motion.
@@ -595,6 +592,7 @@ class SafetyShield {
 
   /**
    * @brief Set the safety shield to non path consistent braking and override trajectory limits.
+   * Note: we need to adjust combine it with the reset functionality in case we set it in the beginning
    */
   inline void setNonPathConsistent() {
     path_consistent_ = false;
@@ -612,6 +610,15 @@ class SafetyShield {
       trajectory_index_ = trajectory.size() - 1;
     }
   }
+
+  /**
+   * @brief Increment the paths.
+   * if safe: increment the potential path and replace the previously verified safe path with the potential path
+   * if unsafe: increment the safe path
+   * updates the time parameter path_s_
+   * @param is_safe bool if the potential path was verified as safe. 
+   */
+  void incrementPaths(bool is_safe);
 
   /**
    * @brief Computes a trajectory from the given motion to the goal motion using ruckig.
@@ -726,7 +733,7 @@ class SafetyShield {
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifySafety(LongTermTraj& sparse_trajectory);
+  bool verifySafety(const LongTermTraj& sparse_trajectory);
 
   /**
    * @brief verify if the contact energy constraint is satisfied
@@ -748,7 +755,7 @@ class SafetyShield {
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifyContactEnergySafetyByContactType(LongTermTraj& sparse_trajectory, std::vector<double> time_points,
+  bool verifyContactEnergySafetyByContactType(const LongTermTraj& sparse_trajectory, std::vector<double> time_points,
                                               int& collision_index);
 
   /**
@@ -758,7 +765,7 @@ class SafetyShield {
    * @param[out] vel_cap_end The pointer to the capsule velocity at the end of the interval.
    */
   void buildRobotVelocityPointers(
-      LongTermTraj& sparse_trajectory,
+      const LongTermTraj& sparse_trajectory,
       std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_start,
       std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end);
 
@@ -837,12 +844,12 @@ class SafetyShield {
   /**
    * @brief builds the trajectory object and calculates the dynamics.
    * @param interval_edges_motion the motions at the edges of the time intervals.
-   * @details
-   * For PFL: This function calculates the Jacobians, Inertias, and velocity capsules at the time points used for
-   * verification. For SSM: This function calculates the alpha values at the time points used for verification.
-   * @return LongTermTraj trajectory with dynamics.
+   * @param compute_dynamics bool to create object with dynamics. 
+   * if compute_dynamics true: This function calculates the Jacobians, Inertias, and velocity capsules at the time points used for
+   * verification. if compute_dynamics false: This function calculates the alpha values at the time points used for verification.
+   * @return LongTermTraj trajectory.
    */
-  LongTermTraj buildTrajectory(const std::vector<Motion>& interval_edges_motion);
+  LongTermTraj buildTrajectory(const std::vector<Motion>& interval_edges_motion, bool compute_dynamics);
 
   /**
    * @brief Calculate the list of link inertia matrices on the LTT based on the current path and the given time points.
