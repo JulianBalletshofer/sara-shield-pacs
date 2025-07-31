@@ -382,16 +382,6 @@ class SafetyShield {
   bool planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvre);
 
   /**
-   * @brief Calculate the next desired joint position based on verification.
-   * If is_safe_ we replace old verified trajectory with the verified monitored trajectory and reset the index.
-   * If not safe, we keep the old verified trajectory.
-   * We increment the verified trajectory index and return the next motion.
-   * @param is_safe Last recovery path + potential path are verified safe.
-   * @return next motion
-   */
-  Motion determineNextMotion(bool is_safe);
-
-  /**
    * @brief Check a given motion if it exceeds the joint limits.
    *
    * @param motion Motion to check
@@ -612,13 +602,11 @@ class SafetyShield {
   }
 
   /**
-   * @brief Increment the paths.
-   * if safe: increment the potential path and replace the previously verified safe path with the potential path
-   * if unsafe: increment the safe path
-   * updates the time parameter path_s_
-   * @param is_safe bool if the potential path was verified as safe. 
+   * @brief Update the safe path to the monitored path if the verification is successful (safe) 
+   * or increment the existing safe path otherwise.
+   * @param is_safe Whether or not the verification was successful.
    */
-  void incrementPaths(bool is_safe);
+  void updateSafePath(bool is_safe);
 
   /**
    * @brief Computes a trajectory from the given motion to the goal motion using ruckig.

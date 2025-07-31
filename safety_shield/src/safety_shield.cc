@@ -51,7 +51,8 @@ SafetyShield::SafetyShield(int nb_joints, double sample_time, double max_s_stop,
     is_safe_ = false;
   }
   Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
-  next_motion_ = determineNextMotion(is_safe_);
+  updateSafePath(is_safe_);
+  next_motion_ = getCurrentMotion();
   std::vector<double> q_min(nb_joints, -3.141);
   std::vector<double> q_max(nb_joints, -3.141);
   ltp_ = long_term_planner::LongTermPlanner(nb_joints, sample_time, q_min, q_max, v_max_allowed,
@@ -97,7 +98,6 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
   for (int i = 0; i < nb_joints_; i++) {
     prev_dq.push_back(0.0);
   }
-  spdlog::info("Safety shield with non path consistent braking created.");
   if (shield_type_ == ShieldType::OFF) {
     is_safe_ = true;
   } else {
@@ -114,16 +114,16 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
     std::vector<Motion> long_term_traj;
     long_term_traj.push_back(init_motion);
     long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
-    incrementPaths(is_safe_);
-    next_motion_ = determineNextMotion(is_safe_);
-    spdlog::info("Safety shield with path consistent braking resetted.");
+    updateSafePath(is_safe_);
+    next_motion_ = getCurrentMotion();
+    spdlog::info("Safety shield with path consistent braking created.");
   } else {
     intended_trajectory_ = initial_traj;
     intended_trajectory_index_ = 0;
     // initialize goal and next motion with init motion
     next_motion_ = init_motion;
     new_goal_motion_ = init_motion;
-    spdlog::info("Safety shield with non path consistent braking resetted.");
+    spdlog::info("Safety shield with non path consistent braking created.");
   }
 }
 
@@ -169,8 +169,8 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
     std::vector<Motion> long_term_traj;
     long_term_traj.push_back(init_motion);
     long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
-    incrementPaths(is_safe_);
-    next_motion_ = determineNextMotion(is_safe_);
+    updateSafePath(is_safe_);
+    next_motion_ = getCurrentMotion();
     spdlog::info("Safety shield with path consistent braking resetted.");
   } else {
     intended_trajectory_ = initial_traj;
@@ -503,36 +503,6 @@ bool SafetyShield::checkTrajectoryForJointLimits(std::vector<Motion>& trajectory
   return true;
 }
 
-void SafetyShield::incrementPaths(bool is_safe) {
-  double s_d;
-  if (is_safe) {
-    if (recovery_path_.getPosition() >= failsafe_path_.getPosition()) {
-      s_d = recovery_path_.getPosition();
-    } else {
-      potential_path_.increment(sample_time_);
-      s_d = potential_path_.getPosition();
-    }
-    safe_path_ = potential_path_;
-  } else {
-    safe_path_.increment(sample_time_);
-    s_d = safe_path_.getPosition();
-  }
-  path_s_ = s_d;
-}
-
-Motion SafetyShield::determineNextMotion(bool is_safe) {
-  Motion next_motion;
-  if (is_safe) {
-    // only override if planning was sucessful and safe
-    verified_trajectory_ = monitored_trajectory_;
-    verified_trajectory_index_ = 0;
-  }
-  incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
-  next_motion = verified_trajectory_[verified_trajectory_index_];
-  // Return the calculated next motion
-  return next_motion;
-}
-
 std::vector<Motion> SafetyShield::goalPlanningRuckig(const Motion& start_motion, const Motion& goal_motion,
                                                      const double start_time) {
   std::vector<Motion> planned_trajectory = computeGoalTrajectory(
@@ -607,7 +577,8 @@ Motion SafetyShield::step(double cycle_begin_time) {
         spdlog::warn("SafetyShield::step: stepNonPathConistent failed: {}", e.what());
         bool is_safe_ = false;
         spdlog::info("SafetyShield::step: stay on verified trajectory");
-        return determineNextMotion(is_safe_);
+        updateSafePath(is_safe_);
+        return getCurrentMotion();
       }
     }
     // create time points for sparse vector of motions
@@ -622,12 +593,10 @@ Motion SafetyShield::step(double cycle_begin_time) {
         buildTrajectory(interval_edges_motions, shield_type_ == ShieldType::PFL);
     // verify safety of the sparse trajectory
     is_safe_ = verifySafety(sparse_trajectory);
-    // update s_d for path consistent
-    if (path_consistent_) {
-      incrementPaths(is_safe_);
-    }
-    // Select the next motion based on the verified safety
-    next_motion_ = determineNextMotion(is_safe_);
+    // update the safe path that we want to continue on
+    updateSafePath(is_safe_);
+    // Select the next motion
+    next_motion_ = getCurrentMotion();
     next_motion_.setTime(cycle_begin_time);
     new_ltt_processed_ = true;
     return next_motion_;
@@ -834,6 +803,25 @@ bool SafetyShield::verifyConstrainedContactSafety(std::vector<double> time_point
     }
   }
   return is_safe;
+}
+
+void SafetyShield::updateSafePath(bool is_safe) {
+  if (path_consistent_){
+    if (is_safe) {
+      // only override if planning was sucessful and safe
+      safe_path_ = potential_path_;
+    }
+    // we need to increment the path
+    safe_path_.increment(sample_time_);
+    // Set s to the new path position
+    path_s_ = safe_path_.getPosition();
+  }
+  if (is_safe) {
+    // only override if planning was sucessful and safe
+    verified_trajectory_ = monitored_trajectory_;
+    verified_trajectory_index_ = 0;
+  }
+  incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
 }
 
 Motion SafetyShield::getCurrentMotion() {
