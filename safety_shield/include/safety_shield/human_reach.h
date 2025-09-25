@@ -93,6 +93,11 @@ class HumanReach {
   int n_joints_meas_;
 
   /**
+   * @brief If true: Use measurements, else: use predictions.
+   */
+  bool use_measurements_ = true;
+
+  /**
    * @brief Joint position measurements
    */
   std::vector<reach_lib::Point> joint_pos_;
@@ -101,6 +106,11 @@ class HumanReach {
    * @brief Calculated velocities
    */
   std::vector<reach_lib::Point> joint_vel_;
+
+  /**
+   * @brief Predicted joint positions, their time and error.
+   */
+  std::vector<reach_lib::Prediction> joint_predictions_;
 
   /**
    * @brief Maps the body name to the proximal and distal joint ids (key: Body name, value: Joint pair).
@@ -341,15 +351,32 @@ class HumanReach {
   void measurement(const std::vector<reach_lib::Point>& human_joint_pos, double time);
 
   /**
+   * @brief Receive a new human 
+   * @details The difference between a measurement and a prediction is two-fold. 
+   *  First, predictions have a bounded prediction error per predicted joint, whereas 
+   *  measurements only have a constant error for all joints.
+   *  Second, we can use a set of future predictions, e.g., for the human pose in 50, 100, and 150ms.
+   * @param[in] human_predictions A vector of human joint predictions (list of reach_lib::Points)
+   *            Predictions are of type std::pair<double, std::vector<reach_lib::Sphere>> 
+   *            The first value is the time for which we predict the joint positions.
+   *            The second value incorporates the measurement and bounded error.
+   *            The center of the sphere is the predicted position and the radius is the error.
+   */
+  inline void predictions(const std::vector<reach_lib::Prediction>& human_predictions) {
+    use_measurements_ = false;
+    joint_predictions_ = human_predictions;
+  }
+
+  /**
    * @brief Calculate reachability analysis for a given braking time.
    *
    * Updates the values in human_p_, human_v_, human_a_.
    * Get the values afterwards with the getter functions!
    *
-   * @param[in] t_command Current time of command.
-   * @param[in] t_brake Time horizon of reachability analysis starting from t_command.
+   * @param[in] t_start Start of the reachability analysis.
+   * @param[in] duration Time horizon of reachability analysis starting from t_start.
    */
-  void humanReachabilityAnalysis(double t_command, double t_brake);
+  void humanReachabilityAnalysis(double t_start, double duration);
 
 
   /**
@@ -361,6 +388,15 @@ class HumanReach {
   void updateModels(double t_a, double t_b);
 
   /**
+   * @brief Calculate reachability analysis for a given time interval.
+   * @details Uses predictions instead of measurements.
+   * 
+   * @param t_a start time point of the interval of analysis expressed as the relative time from the last measurement.
+   * @param t_b end time point of the interval of analysis expressed as the relative time from the last measurement.
+   */
+  void updateModelsWithPrediction(double t_a, double t_b);
+
+  /**
    * @brief Get the capsules of a model
    * 
    * @param[in] model The model to get the capsules from
@@ -370,6 +406,10 @@ class HumanReach {
    */
   inline std::vector<reach_lib::Capsule> getCapsulesOfModel(const reach_lib::Articulated& model) const {
     if (reach_lib::get_capsule_map.find(model.get_mode()) != reach_lib::get_capsule_map.end()) {
+      if (!use_measurements_ && (model.get_mode() == "ARTICULATED-ACCEL" || model.get_mode() == "ARTICULATED-COMBINED")) {
+        spdlog::warn("[HumanReach::getCapsulesOfModel] Using predictions with model type {} is not supported. Leaving this out.", model.get_mode());
+        return {};
+      }
       return reach_lib::get_capsule_map.at(model.get_mode())(model);
     } else {
       throw HumanModelNotFoundException(model.get_mode());

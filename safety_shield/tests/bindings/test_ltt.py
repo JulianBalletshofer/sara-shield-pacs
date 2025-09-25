@@ -21,6 +21,7 @@ Changelog:
 """
 
 import pytest
+import math
 from safety_shield_py import LongTermTraj, Motion
 
 
@@ -72,11 +73,14 @@ class TestLTTFunctions:
         v_max = [1.0, 1.0, 1.0]
         a_max = [10.0, 10.0, 10.0]
         j_max = [100.0, 100.0, 100.0]
-        sample_time = 0.01
+        sample_time = 1.0
         return LongTermTraj(motions, sample_time, starting_index, v_max, a_max, j_max)
 
     def test_interpolate_ds1(self, full_ltt):
         """Test the interpolation function for ds=1."""
+        assert full_ltt.getCurrentPos() == 0
+        assert full_ltt.getStartingIndex() == 0
+        assert full_ltt.getTrajectoryIndex(math.floor(1.5/1.0)) == 1
         motion = full_ltt.interpolate(1.5, 1.0, 0.0, 0.0)
         assert motion.getAngle()[0] == 0.125
         assert motion.getAngle()[1] == 0

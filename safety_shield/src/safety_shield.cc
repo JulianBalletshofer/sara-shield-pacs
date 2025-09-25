@@ -67,68 +67,99 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
                            const std::vector<reach_lib::AABB> &environment_elements, ShieldType shield_type, ContactType eef_contact_type)
     : sample_time_(sample_time), path_s_(0), path_s_discrete_(0), environment_elements_(environment_elements),
      shield_type_(shield_type), eef_contact_type_(eef_contact_type) {
-  ///////////// Build robot reach
-  robot_reach_ = buildRobotReach(robot_config_file, init_x, init_y, init_z, init_roll, init_pitch, init_yaw);
-  nb_joints_ = robot_reach_->getNbJoints();
-  ////////////// Setting trajectory variables
-  int velocity_method_int;
-  readTrajectoryConfig(
-    trajectory_config_file,
-    max_s_stop_,
-    q_min_allowed_,
-    q_max_allowed_,
-    v_max_allowed_,
-    a_max_allowed_,
-    j_max_allowed_,
-    a_max_ltt_,
-    j_max_ltt_,
-    v_safe_,
-    alpha_i_max_,
-    velocity_method_int,
-    reachability_set_interval_size_
-  );
-  ltp_ = long_term_planner::LongTermPlanner(nb_joints_, sample_time, q_min_allowed_, q_max_allowed_, v_max_allowed_,
-                                            a_max_ltt_, j_max_ltt_);
-  RobotReach::VelocityMethod velocity_method = static_cast<RobotReach::VelocityMethod>(velocity_method_int);
-  robot_reach_->setVelocityMethod(velocity_method);
-  // Initialize the long term trajectory
-  sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
-  std::vector<Motion> long_term_traj;
-  long_term_traj.push_back(Motion(0.0, init_qpos));
-  if (shield_type_ == ShieldType::SSM || shield_type_ == ShieldType::OFF) {
-    long_term_trajectory_ = LongTermTraj(
-      long_term_traj, sample_time_, path_s_discrete_,
-      v_max_allowed_, a_max_allowed_, j_max_allowed_,
-      sliding_window_k_, alpha_i_max_
-    );
-  } else {
-    long_term_trajectory_ = LongTermTraj(
-      long_term_traj, sample_time_, *robot_reach_, path_s_discrete_,
-      v_max_allowed_, a_max_allowed_, j_max_allowed_, sliding_window_k_
-    );
-  }
-  reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
-  //////////// Build human reach
-  human_reach_ = buildHumanReach(mocap_config_file);
-  buildMaxContactEnergies();
-  ///////////// Build verifier
-  verify_ = new safety_shield::VerifyISO();
-  /////////// Other settings
-  sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
-  std::vector<double> prev_dq;
+  try {
+    ///////////// Build robot reach
+    spdlog::info("Loading robot configuration from: {}", robot_config_file);
+    robot_reach_ = buildRobotReach(robot_config_file, init_x, init_y, init_z, init_roll, init_pitch, init_yaw);
+    if (robot_reach_ == nullptr) {
+      throw std::runtime_error("Failed to build robot reach from config file: " + robot_config_file);
+    }
+    nb_joints_ = robot_reach_->getNbJoints();
 
-  for (int i = 0; i < nb_joints_; i++) {
-    prev_dq.push_back(0.0);
+    ////////////// Setting trajectory variables
+    spdlog::info("Loading trajectory configuration from: {}", trajectory_config_file);
+    int velocity_method_int;
+    readTrajectoryConfig(
+      trajectory_config_file,
+      max_s_stop_,
+      q_min_allowed_,
+      q_max_allowed_,
+      v_max_allowed_,
+      a_max_allowed_,
+      j_max_allowed_,
+      a_max_ltt_,
+      j_max_ltt_,
+      v_safe_,
+      alpha_i_max_,
+      velocity_method_int,
+      reachability_set_interval_size_
+    );
+
+    ltp_ = long_term_planner::LongTermPlanner(nb_joints_, sample_time, q_min_allowed_, q_max_allowed_, v_max_allowed_,
+                                              a_max_ltt_, j_max_ltt_);
+    RobotReach::VelocityMethod velocity_method = static_cast<RobotReach::VelocityMethod>(velocity_method_int);
+    robot_reach_->setVelocityMethod(velocity_method);
+
+    // Initialize the long term trajectory
+    sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
+    std::vector<Motion> long_term_traj;
+    long_term_traj.push_back(Motion(0.0, init_qpos));
+    if (shield_type_ == ShieldType::SSM || shield_type_ == ShieldType::OFF) {
+      long_term_trajectory_ = LongTermTraj(
+        long_term_traj, sample_time_, path_s_discrete_,
+        v_max_allowed_, a_max_allowed_, j_max_allowed_,
+        sliding_window_k_, alpha_i_max_
+      );
+    } else {
+      long_term_trajectory_ = LongTermTraj(
+        long_term_traj, sample_time_, *robot_reach_, path_s_discrete_,
+        v_max_allowed_, a_max_allowed_, j_max_allowed_, sliding_window_k_
+      );
+    }
+    reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
+
+    //////////// Build human reach
+    spdlog::info("Loading human/mocap configuration from: {}", mocap_config_file);
+    human_reach_ = buildHumanReach(mocap_config_file);
+    if (human_reach_ == nullptr) {
+      throw std::runtime_error("Failed to build human reach from config file: " + mocap_config_file);
+    }
+
+    buildMaxContactEnergies();
+
+    ///////////// Build verifier
+    verify_ = new safety_shield::VerifyISO();
+
+    /////////// Other settings
+    sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
+    std::vector<double> prev_dq;
+
+    for (int i = 0; i < nb_joints_; i++) {
+      prev_dq.push_back(0.0);
+    }
+    if (shield_type_ == ShieldType::OFF) {
+      is_safe_ = true;
+    } else {
+      is_safe_ = false;
+    }
+    Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
+    updateSafePath(is_safe_);
+    next_motion_ = getCurrentMotion();
+
+    spdlog::warn("Safety shield created.");
+  } catch (const std::exception& e) {
+    spdlog::error("SafetyShield constructor failed: {}", e.what());
+    spdlog::error("Robot config file: {}", robot_config_file);
+    spdlog::error("Trajectory config file: {}", trajectory_config_file);
+    spdlog::error("Mocap config file: {}", mocap_config_file);
+    throw std::runtime_error("SafetyShield initialization failed: " + std::string(e.what()));
+  } catch (...) {
+    spdlog::error("SafetyShield constructor failed with unknown exception");
+    spdlog::error("Robot config file: {}", robot_config_file);
+    spdlog::error("Trajectory config file: {}", trajectory_config_file);
+    spdlog::error("Mocap config file: {}", mocap_config_file);
+    throw std::runtime_error("SafetyShield initialization failed with unknown error");
   }
-  if (shield_type_ == ShieldType::OFF) {
-    is_safe_ = true;
-  } else {
-    is_safe_ = false;
-  }
-  Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
-  updateSafePath(is_safe_);
-  next_motion_ = getCurrentMotion();
-  spdlog::info("Safety shield created.");
 }
 
 void SafetyShield::reset(double init_x, double init_y, double init_z, double init_roll, double init_pitch,
