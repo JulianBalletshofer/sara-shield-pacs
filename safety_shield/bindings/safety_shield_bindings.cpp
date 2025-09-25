@@ -108,12 +108,6 @@ PYBIND11_MODULE(safety_shield_py, handle) {
     .def_readwrite("center", &reach_lib::Sphere::p_)
     .def_readwrite("radius", &reach_lib::Sphere::r_)
     ;
-  // Prediction class (typedef std::pair<double, std::vector<Sphere>>)
-  py::class_<reach_lib::Prediction>(handle, "Prediction")
-    .def(py::init<double, std::vector<reach_lib::Sphere>>(), py::arg("time"), py::arg("spheres"))
-    .def_property_readonly("time", [](const reach_lib::Prediction& p) { return p.first; })
-    .def_property_readonly("spheres", [](const reach_lib::Prediction& p) { return p.second; })
-    ;
   // Axis-aligned bounding box class
   py::class_<reach_lib::AABB>(handle, "AABB")
     .def(py::init<>())

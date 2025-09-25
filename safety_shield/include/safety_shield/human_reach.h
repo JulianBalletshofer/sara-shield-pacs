@@ -406,6 +406,10 @@ class HumanReach {
    */
   inline std::vector<reach_lib::Capsule> getCapsulesOfModel(const reach_lib::Articulated& model) const {
     if (reach_lib::get_capsule_map.find(model.get_mode()) != reach_lib::get_capsule_map.end()) {
+      if (!use_measurements_ && (model.get_mode() == "ARTICULATED-ACCEL" || model.get_mode() == "ARTICULATED-COMBINED")) {
+        spdlog::warn("[HumanReach::getCapsulesOfModel] Using predictions with model type {} is not supported. Leaving this out.", model.get_mode());
+        return {};
+      }
       return reach_lib::get_capsule_map.at(model.get_mode())(model);
     } else {
       throw HumanModelNotFoundException(model.get_mode());
