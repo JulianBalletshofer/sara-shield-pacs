@@ -31,22 +31,21 @@ class TestSafetyShield:
     def shield(self):
         """Define a test fixture for the safety shield.
 
-        We use the modrob1 and the CMU_mocap_no_hand config files.
+        We use the schunk and the CMU_mocap_no_hand config files.
         The sampling time is set to 0.004.
         All initial position and rotations are set to zero.
         The shield is active.
         """
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        print(dir_path)
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "config")
+        print(f"Config directory: {config_dir}")
         table = AABB([-1.0, -1.0, -0.1], [1.0, 1.0, 0.0])
         shield_type = ShieldType.SSM
         contact_type = ContactType.EDGE
         shield = SafetyShield(
             sample_time=0.004,
-            trajectory_config_file=dir_path
-            + "/../../config/trajectory_parameters_modrob1.yaml",
-            robot_config_file=dir_path + "/../../config/robot_parameters_modrob1.yaml",
-            mocap_config_file=dir_path + "/../../config/cmu_mocap_no_hand.yaml",
+            trajectory_config_file=os.path.join(config_dir, "trajectory_parameters_schunk.yaml"),
+            robot_config_file=os.path.join(config_dir, "robot_parameters_schunk.yaml"),
+            mocap_config_file=os.path.join(config_dir, "cmu_mocap_no_hand.yaml"),
             init_x=0.0,
             init_y=0.0,
             init_z=0.0,
@@ -56,7 +55,7 @@ class TestSafetyShield:
             init_qpos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             environment_elements=[table],
             shield_type=shield_type,
-            contact_type=contact_type
+            eef_contact_type=contact_type
         )
         return shield
 
@@ -69,17 +68,26 @@ class TestSafetyShield:
         All initial position and rotations are set to zero.
         The shield is active.
         """
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        print(dir_path)
+        # Find the safety_shield project root directory by looking for the config folder
+        # Start from the test file location and walk up the directory tree
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        while current_dir != '/':
+            config_dir = os.path.join(current_dir, "config")
+            if os.path.exists(config_dir) and os.path.exists(os.path.join(config_dir, "robot_parameters_schunk.yaml")):
+                break
+            current_dir = os.path.dirname(current_dir)
+        else:
+            # Fallback: assume we're in the safety_shield directory
+            config_dir = os.path.join(os.getcwd(), "config")
+        print(f"Config directory: {config_dir}")
         table = AABB([-1.0, -1.0, -0.1], [1.0, 1.0, 0.0])
         shield_type = ShieldType.SSM
         contact_type = ContactType.EDGE
         shield = SafetyShield(
             sample_time=0.004,
-            trajectory_config_file=dir_path
-            + "/../../config/trajectory_parameters_schunk.yaml",
-            robot_config_file=dir_path + "/../../config/robot_parameters_schunk.yaml",
-            mocap_config_file=dir_path + "/../../config/cmu_mocap_no_hand.yaml",
+            trajectory_config_file=os.path.join(config_dir, "trajectory_parameters_schunk.yaml"),
+            robot_config_file=os.path.join(config_dir, "robot_parameters_schunk.yaml"),
+            mocap_config_file=os.path.join(config_dir, "cmu_mocap_no_hand.yaml"),
             init_x=0.0,
             init_y=0.0,
             init_z=0.0,
@@ -89,14 +97,14 @@ class TestSafetyShield:
             init_qpos=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             environment_elements=[table],
             shield_type=shield_type,
-            contact_type=contact_type
+            eef_contact_type=contact_type
         )
         return shield
 
     def test_safety_shield(self, shield):
         """Test the safety shield constructor."""
         assert shield is not None
-        
+
     def test_reset_safety_shield(self, shield):
         """Test the reset function."""
         table = AABB([-1.0, -1.0, -0.1], [1.0, 1.0, 0.0])
@@ -112,7 +120,7 @@ class TestSafetyShield:
                      current_time=0.0,
                      environment_elements=[table],
                      shield_type=shield_type,
-                     contact_type=contact_type
+                     eef_contact_type=contact_type
                     )
         assert shield is not None   
 
@@ -166,7 +174,7 @@ class TestSafetyShield:
         assert is_safe is False
 
     def test_getRobotReachCapsules(self, shield):
-        """Test the getRobotReachCapsules() function for the modrob1 test fixture."""
+        """Test the getRobotReachCapsules() function for the schunk test fixture."""
         pos = [0.0 for i in range(6)]
         vel = [0.0 for i in range(6)]
         shield.newLongTermTrajectory(pos, vel)
