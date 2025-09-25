@@ -152,7 +152,12 @@ class TestSafetyShield:
         motions.append(Motion(
             3.0, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 0.0
         ))
-        ltt = LongTermTraj(motions, 1.0)
+        sample_time = 1.0
+        starting_index = 0
+        v_max_allowed = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        a_max_allowed = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+        j_max_allowed = [100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+        ltt = LongTermTraj(motions, sample_time, starting_index, v_max_allowed, a_max_allowed, j_max_allowed)
         shield.setLongTermTrajectory(ltt)
 
     def test_step(self, shield):
@@ -198,54 +203,53 @@ class TestSafetyShield:
         eps = 1e-5
         secure_radius = 0.01
         print("-----")
-        assert abs(robot_caps[0][0] - 4.419824882251160e-04) <= eps
-        assert abs(robot_caps[0][1] - -0.046901920258750) <= eps
-        assert abs(robot_caps[0][2] - 0.316102435183982) <= eps
-        assert abs(robot_caps[0][3] - 5.633175125972268e-04) <= eps
-        assert abs(robot_caps[0][4] - -0.039612679720870) <= eps
-        assert abs(robot_caps[0][5] - 0.309257564827811) <= eps
-        assert abs(robot_caps[0][6] - (0.128755148876288 + secure_radius)) <= eps
+        assert abs(robot_caps[0][0] - 0.0) <= eps
+        assert abs(robot_caps[0][1] - -0.015) <= eps
+        assert abs(robot_caps[0][2] - 0.1553) <= eps
+        assert abs(robot_caps[0][3] - 0.0) <= eps
+        assert abs(robot_caps[0][4] - -0.015) <= eps
+        assert abs(robot_caps[0][5] - 0.1553) <= eps
+        assert abs(robot_caps[0][6] - (0.11000000310751243)) <= eps
         print("-----")
-        assert abs(robot_caps[1][0] - -0.001475548520496) <= eps
-        assert abs(robot_caps[1][1] - 0.069582202005415) <= eps
-        assert abs(robot_caps[1][2] - 0.376756288468218) <= eps
-        assert abs(robot_caps[1][3] - 0.001008748287424) <= eps
-        assert abs(robot_caps[1][4] - 0.041671798076183) <= eps
-        assert abs(robot_caps[1][5] - 0.695527111508655) <= eps
-        assert abs(robot_caps[1][6] - (0.135477093612307 + secure_radius)) <= eps
+        assert abs(robot_caps[1][0] - -0.00066172) <= eps
+        assert abs(robot_caps[1][1] - 0.11404500000000001) <= eps
+        assert abs(robot_caps[1][2] - 0.155205916) <= eps
+        assert abs(robot_caps[1][3] - 0.00022952) <= eps
+        assert abs(robot_caps[1][4] - 0.11488) <= eps
+        assert abs(robot_caps[1][5] - 0.5052) <= eps
+        assert abs(robot_caps[1][6] - (0.09402100310751244)) <= eps
         print("-----")
-        assert abs(robot_caps[2][0] - 0.022974546488243) <= eps
-        assert abs(robot_caps[2][1] - -0.098358202251421) <= eps
-        assert abs(robot_caps[2][2] - 0.769133504587120) <= eps
-        assert abs(robot_caps[2][3] - 0.090252153491381) <= eps
-        assert abs(robot_caps[2][4] - -0.112369997514008) <= eps
-        assert abs(robot_caps[2][5] - 0.810089495473077) <= eps
-        assert abs(robot_caps[2][6] - (0.123147121411940 + secure_radius)) <= eps
+        assert abs(robot_caps[2][0] - 0.0) <= eps
+        assert abs(robot_caps[2][1] - 0.0) <= eps
+        assert abs(robot_caps[2][2] - 0.49029999999999996) <= eps
+        assert abs(robot_caps[2][3] - 0.0) <= eps
+        assert abs(robot_caps[2][4] - 0.0) <= eps
+        assert abs(robot_caps[2][5] - 0.49029999999999996) <= eps
+        assert abs(robot_caps[2][6] - (0.11000000310751243)) <= eps
         print("-----")
-        assert abs(robot_caps[3][0] - 0.113983176898700) <= eps
-        assert abs(robot_caps[3][1] - -0.074843993014393) <= eps
-        assert abs(robot_caps[3][2] - 0.970834416653274) <= eps
-        assert abs(robot_caps[3][3] - 0.114016223039576) <= eps
-        assert abs(robot_caps[3][4] - -0.035085806401094) <= eps
-        assert abs(robot_caps[3][5] - 1.136119883362162) <= eps
-        assert abs(robot_caps[3][6] - (0.132674969625049 + secure_radius)) <= eps
+        assert abs(robot_caps[3][0] - -4.6934e-05) <= eps
+        assert abs(robot_caps[3][1] - -0.0058834) <= eps
+        assert abs(robot_caps[3][2] - 0.60610485) <= eps
+        assert abs(robot_caps[3][3] - -2.3657e-06) <= eps
+        assert abs(robot_caps[3][4] - 0.061878) <= eps
+        assert abs(robot_caps[3][5] - 0.80487) <= eps
+        assert abs(robot_caps[3][6] - (0.08850000310751244)) <= eps
         print("-----")
-        assert abs(robot_caps[4][0] - 0.068707349990918) <= eps
-        assert abs(robot_caps[4][1] - -0.131206299703527) <= eps
-        assert abs(robot_caps[4][2] - 1.193086500002462) <= eps
-        assert abs(robot_caps[4][3] - 0.068707349990918) <= eps
-        assert abs(robot_caps[4][4] - -0.131206299703527) <= eps
-        assert abs(robot_caps[4][5] - 1.193086500002462) <= eps
-        assert abs(robot_caps[4][6] - (0.127657916394952 + secure_radius)) <= eps
+        assert abs(robot_caps[4][0] - 0.0) <= eps
+        assert abs(robot_caps[4][1] - 0.0) <= eps
+        assert abs(robot_caps[4][2] - 0.7915) <= eps
+        assert abs(robot_caps[4][3] - 0.0) <= eps
+        assert abs(robot_caps[4][4] - 0.0) <= eps
+        assert abs(robot_caps[4][5] - 0.7915) <= eps
+        assert abs(robot_caps[4][6] - (0.09000000310751244)) <= eps
         print("-----")
-        # assert(abs(robot_caps[5][0] - 0.273999999975235) <= eps)
-        # We manually set this value, so the test would fail.
-        assert abs(robot_caps[5][1] - -0.101349999585660) <= eps
-        assert abs(robot_caps[5][2] - 1.223845648629919) <= eps
-        assert abs(robot_caps[5][3] - 0.324549986083302) <= eps
-        assert abs(robot_caps[5][4] - -0.101349999554536) <= eps
-        assert abs(robot_caps[5][5] - 1.223754351487657) <= eps
-        assert abs(robot_caps[5][6] - (0.046806563054797 + secure_radius)) <= eps
+        assert(abs(robot_caps[5][0] - 0.00049324) <= eps)
+        assert abs(robot_caps[5][1] - 0.0033497) <= eps
+        assert abs(robot_caps[5][2] - 0.905303) <= eps
+        assert abs(robot_caps[5][3] - -0.00049264) <= eps
+        assert abs(robot_caps[5][4] - 0.0031812) <= eps
+        assert abs(robot_caps[5][5] - 0.9853) <= eps
+        assert abs(robot_caps[5][6] - (0.09254900310751243)) <= eps
 
     def test_humanPrediction(self, shield):
         """Test the humanPrediction() function with prediction data."""
