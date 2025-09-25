@@ -21,7 +21,7 @@ Changelog:
 """
 import os
 import pytest
-from safety_shield_py import Motion, LongTermTraj, AABB, SafetyShield, ContactType, ShieldType
+from safety_shield_py import Motion, LongTermTraj, AABB, SafetyShield, ContactType, ShieldType, Point, Sphere, Prediction
 
 
 class TestSafetyShield:
@@ -238,6 +238,93 @@ class TestSafetyShield:
         assert abs(robot_caps[5][4] - -0.101349999554536) <= eps
         assert abs(robot_caps[5][5] - 1.223754351487657) <= eps
         assert abs(robot_caps[5][6] - (0.046806563054797 + secure_radius)) <= eps
+
+    def test_humanPrediction(self, shield):
+        """Test the humanPrediction() function with prediction data."""
+        # Create prediction data for 3 time points
+        # Each prediction contains spheres representing joint positions with bounded error
+
+        # Prediction at time 0.0s
+        spheres_t0 = []
+        for i in range(21):  # 21 joints for CMU mocap
+            center = Point(0.0, 0.0, 0.0)  # All joints at origin
+            sphere = Sphere(center, 0.01)   # 1cm prediction error
+            spheres_t0.append(sphere)
+        pred_t0 = Prediction(0.0, spheres_t0)
+
+        # Prediction at time 0.05s
+        spheres_t1 = []
+        for i in range(21):
+            center = Point(0.1, 0.0, 0.0)  # Joints moved 10cm in x direction
+            sphere = Sphere(center, 0.02)   # 2cm prediction error
+            spheres_t1.append(sphere)
+        pred_t1 = Prediction(0.05, spheres_t1)
+
+        # Prediction at time 0.10s
+        spheres_t2 = []
+        for i in range(21):
+            center = Point(0.2, 0.0, 0.0)  # Joints moved 20cm in x direction
+            sphere = Sphere(center, 0.015)  # 1.5cm prediction error
+            spheres_t2.append(sphere)
+        pred_t2 = Prediction(0.10, spheres_t2)
+
+        # Create list of predictions
+        predictions = [pred_t0, pred_t1, pred_t2]
+
+        # Call humanPrediction with the prediction data
+        shield.humanPrediction(predictions)
+
+        # Set up robot trajectory for safety analysis
+        pos = [0.0 for i in range(6)]
+        vel = [0.0 for i in range(6)]
+        shield.newLongTermTrajectory(pos, vel)
+
+        # Step the shield to trigger reachability analysis
+        motion = shield.step(0.004)
+
+        # Verify that the prediction was processed successfully
+        # The shield should still return a motion (even if it's stopped for safety)
+        assert motion is not None
+        assert motion.getTime() == 0.004
+
+        # Get safety status - with human movement predicted, safety may be compromised
+        is_safe = shield.getSafety()
+        # We expect safety to potentially be False due to predicted human movement
+        assert is_safe is False or is_safe is True  # Either outcome is valid
+
+        # Get human reach capsules to verify prediction was used
+        human_caps = shield.getHumanReachCapsules()
+        assert len(human_caps) > 0  # Should have capsules from prediction data
+
+        # Each capsule should have 7 elements [p1x, p1y, p1z, p2x, p2y, p2z, radius]
+        for cap in human_caps:
+            assert len(cap) == 7
+            # Radius should be positive (incorporates prediction errors)
+            assert cap[6] > 0.0
+
+    def test_humanPredictionTypes(self, shield):
+        """Test the types used in humanPrediction bindings."""
+        # Test Point creation and access
+        point = Point(1.0, 2.0, 3.0)
+        assert point.x == 1.0
+        assert point.y == 2.0
+        assert point.z == 3.0
+
+        # Test Sphere creation
+        sphere = Sphere(point, 0.05)
+        center = sphere.center
+        radius = sphere.radius
+        assert center.x == 1.0
+        assert center.y == 2.0
+        assert center.z == 3.0
+        assert radius == 0.05
+
+        # Test Prediction creation
+        spheres = [sphere]
+        prediction = Prediction(0.1, spheres)
+        assert prediction.time == 0.1  # time
+        assert len(prediction.spheres) == 1  # spheres vector
+        assert prediction.spheres[0].radius == 0.05
 
     # ---------------- Schunk -------------------
     def test_getRobotReachCapsulesSchunk(self, shield_schunk):

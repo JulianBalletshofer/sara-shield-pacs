@@ -93,6 +93,27 @@ PYBIND11_MODULE(safety_shield_py, handle) {
     .def("getAlphaI", &safety_shield::LongTermTraj::getAlphaI)
     .def("calculateMaxAccJerkWindow", &safety_shield::LongTermTraj::calculateMaxAccJerkWindow, py::arg("long_term_traj"), py::arg("k"))
     ;
+  // Point class
+  py::class_<reach_lib::Point>(handle, "Point")
+    .def(py::init<>())
+    .def(py::init<double, double, double>(), py::arg("x"), py::arg("y"), py::arg("z"))
+    .def_readwrite("x", &reach_lib::Point::x)
+    .def_readwrite("y", &reach_lib::Point::y)
+    .def_readwrite("z", &reach_lib::Point::z)
+    ;
+  // Sphere class
+  py::class_<reach_lib::Sphere>(handle, "Sphere")
+    .def(py::init<>())
+    .def(py::init<reach_lib::Point, double>(), py::arg("center"), py::arg("radius"))
+    .def_readwrite("center", &reach_lib::Sphere::p_)
+    .def_readwrite("radius", &reach_lib::Sphere::r_)
+    ;
+  // Prediction class (typedef std::pair<double, std::vector<Sphere>>)
+  py::class_<reach_lib::Prediction>(handle, "Prediction")
+    .def(py::init<double, std::vector<reach_lib::Sphere>>(), py::arg("time"), py::arg("spheres"))
+    .def_property_readonly("time", [](const reach_lib::Prediction& p) { return p.first; })
+    .def_property_readonly("spheres", [](const reach_lib::Prediction& p) { return p.second; })
+    ;
   // Axis-aligned bounding box class
   py::class_<reach_lib::AABB>(handle, "AABB")
     .def(py::init<>())
@@ -147,6 +168,7 @@ PYBIND11_MODULE(safety_shield_py, handle) {
     .def("setLongTermTrajectory", &safety_shield::SafetyShield::setLongTermTrajectory, py::arg("traj"))
     .def("setEEFContactType", &safety_shield::SafetyShield::setEEFContactType, py::arg("contact_type"))
     .def("humanMeasurement", static_cast<void (safety_shield::SafetyShield::*)(const std::vector<std::vector<double>> human_measurement, double time)>(&safety_shield::SafetyShield::humanMeasurement), py::arg("human_measurement"), py::arg("time"))
+    .def("humanPrediction", &safety_shield::SafetyShield::humanPrediction, py::arg("human_predictions"))
     .def("getRobotReachCapsules", &safety_shield::SafetyShield::getRobotReachCapsules)
     .def("getHumanReachCapsules", &safety_shield::SafetyShield::getHumanReachCapsules, py::arg("type") = 0)
     .def("getSafety", &safety_shield::SafetyShield::getSafety)
