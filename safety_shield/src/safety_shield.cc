@@ -73,57 +73,79 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
       environment_elements_(environment_elements),
       shield_type_(shield_type),
       eef_contact_type_(eef_contact_type) {
-  ///////////// Build robot reach
-  robot_reach_ = buildRobotReach(robot_config_file, init_x, init_y, init_z, init_roll, init_pitch, init_yaw);
-  nb_joints_ = robot_reach_->getNbJoints();
-  ////////////// Setting trajectory variables
-  int velocity_method_int;
-  readTrajectoryConfig(trajectory_config_file, max_s_stop_, q_min_allowed_, q_max_allowed_, v_max_allowed_,
-                       a_max_allowed_, j_max_allowed_, a_max_ltt_, j_max_ltt_, v_safe_, alpha_i_max_,
-                       velocity_method_int, reachability_set_interval_size_);
-  ltp_ = long_term_planner::LongTermPlanner(nb_joints_, sample_time, q_min_allowed_, q_max_allowed_, v_max_allowed_,
-                                            a_max_ltt_, j_max_ltt_);
-  RobotReach::VelocityMethod velocity_method = static_cast<RobotReach::VelocityMethod>(velocity_method_int);
-  robot_reach_->setVelocityMethod(velocity_method);
-  // Initialize the long term trajectory
-  reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
-  //////////// Build human reach
-  human_reach_ = buildHumanReach(mocap_config_file);
-  buildMaxContactEnergies();
-  ///////////// Build verifier
-  verify_ = new safety_shield::VerifyISO();
-  /////////// Other settings
-  sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
-  std::vector<double> prev_dq;
-  for (int i = 0; i < nb_joints_; i++) {
-    prev_dq.push_back(0.0);
-  }
-  if (shield_type_ == ShieldType::OFF) {
-    is_safe_ = true;
-  } else {
-    is_safe_ = false;
-  }
-  // initialize goal with the current state
-  Motion init_motion = Motion(0.0, init_qpos);
-  std::vector<Motion> initial_traj;
-  initial_traj.push_back(init_motion);
-  verified_trajectory_ = initial_traj;
-  verified_trajectory_index_ = 0;
-  if (path_consistent_) {
-    // Initialize the long term trajectory
-    std::vector<Motion> long_term_traj;
-    long_term_traj.push_back(init_motion);
-    long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
-    updateSafePath(is_safe_);
-    next_motion_ = getCurrentMotion();
-    spdlog::info("Safety shield with path consistent braking created.");
-  } else {
-    intended_trajectory_ = initial_traj;
-    intended_trajectory_index_ = 0;
-    // initialize goal and next motion with init motion
-    next_motion_ = init_motion;
-    new_goal_motion_ = init_motion;
-    spdlog::info("Safety shield with non path consistent braking created.");
+  try{
+    ///////////// Build robot reach
+    spdlog::info("Loading robot configuration from: {}", robot_config_file);
+    robot_reach_ = buildRobotReach(robot_config_file, init_x, init_y, init_z, init_roll, init_pitch, init_yaw);
+    if (robot_reach_ == nullptr) {
+        throw std::runtime_error("Failed to build robot reach from config file: " + robot_config_file);
+    }
+    nb_joints_ = robot_reach_->getNbJoints();
+    ////////////// Setting trajectory variables
+    spdlog::info("Loading trajectory configuration from: {}", trajectory_config_file);
+    int velocity_method_int;
+    readTrajectoryConfig(trajectory_config_file, max_s_stop_, q_min_allowed_, q_max_allowed_, v_max_allowed_,
+                        a_max_allowed_, j_max_allowed_, a_max_ltt_, j_max_ltt_, v_safe_, alpha_i_max_,
+                        velocity_method_int, reachability_set_interval_size_);
+    reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
+    sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
+    // Initialize long term planner (ToDo maybe replace with ruckig)
+    ltp_ = long_term_planner::LongTermPlanner(nb_joints_, sample_time, q_min_allowed_, q_max_allowed_, v_max_allowed_,
+                                              a_max_ltt_, j_max_ltt_);
+    RobotReach::VelocityMethod velocity_method = static_cast<RobotReach::VelocityMethod>(velocity_method_int);
+    robot_reach_->setVelocityMethod(velocity_method);
+    //////////// Build human reach
+    spdlog::info("Loading human/mocap configuration from: {}", mocap_config_file);
+    human_reach_ = buildHumanReach(mocap_config_file);
+    if (human_reach_ == nullptr) {
+        throw std::runtime_error("Failed to build human reach from config file: " + mocap_config_file);
+      }
+    buildMaxContactEnergies();
+    ///////////// Build verifier
+    verify_ = new safety_shield::VerifyISO();
+
+    // Initialize the long term trajectory, verified and intended trajectory
+    if (shield_type_ == ShieldType::OFF) {
+      is_safe_ = true;
+    } else {
+      is_safe_ = false;
+    }
+    // initialize goal with the current state
+    Motion init_motion = Motion(0.0, init_qpos);
+    std::vector<Motion> initial_traj;
+    initial_traj.push_back(init_motion);
+    verified_trajectory_ = initial_traj;
+    verified_trajectory_index_ = 0;
+    if (path_consistent_) {
+      // Initialize the long term trajectory
+      std::vector<Motion> long_term_traj;
+      long_term_traj.push_back(init_motion);
+      long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
+      // initialize monitored path 
+      Motion goal_motion = computesPotentialTrajectory(is_safe_, init_motion.getVelocity());
+      updateSafePath(is_safe_);
+      next_motion_ = getCurrentMotion();
+      spdlog::info("Safety shield with path consistent braking created.");
+    } else {
+      intended_trajectory_ = initial_traj;
+      intended_trajectory_index_ = 0;
+      // initialize goal and next motion with init motion
+      next_motion_ = init_motion;
+      new_goal_motion_ = init_motion;
+      spdlog::info("Safety shield with non path consistent braking created.");
+    }
+  } catch (const std::exception& e) {
+    spdlog::error("SafetyShield constructor failed: {}", e.what());
+    spdlog::error("Robot config file: {}", robot_config_file);
+    spdlog::error("Trajectory config file: {}", trajectory_config_file);
+    spdlog::error("Mocap config file: {}", mocap_config_file);
+    throw std::runtime_error("SafetyShield initialization failed: " + std::string(e.what()));
+  } catch (...) {
+    spdlog::error("SafetyShield constructor failed with unknown exception");
+    spdlog::error("Robot config file: {}", robot_config_file);
+    spdlog::error("Trajectory config file: {}", trajectory_config_file);
+    spdlog::error("Mocap config file: {}", mocap_config_file);
+    throw std::runtime_error("SafetyShield initialization failed with unknown error");
   }
 }
 
@@ -149,14 +171,14 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
   new_ltt_ = false;
   new_goal_ = false;
   new_ltt_processed_ = false;
-  recovery_path_correct_ = false;
+  intended_path_correct_ = false;
   path_s_ = 0;
   path_s_discrete_ = 0;
   cycle_begin_time_ = current_time;
-  recovery_path_ = Path();
+  intended_path_ = Path();
   failsafe_path_ = Path();
   failsafe_path_2_ = Path();
-  safe_path_ = Path();
+  verified_path_ = Path();
 
   // initialize goal with the current state
   Motion init_motion = Motion(0.0, init_qpos);
@@ -169,6 +191,8 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
     std::vector<Motion> long_term_traj;
     long_term_traj.push_back(init_motion);
     long_term_trajectory_ = buildTrajectory(long_term_traj, shield_type_ == ShieldType::PFL);
+    // initialize monitored path 
+    Motion goal_motion = computesPotentialTrajectory(is_safe_, init_motion.getVelocity());
     updateSafePath(is_safe_);
     next_motion_ = getCurrentMotion();
     spdlog::info("Safety shield with path consistent braking resetted.");
@@ -362,16 +386,16 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
       }
       path_s_discrete_++;
     }
-    // If verified safe, take the recovery path, otherwise, take the failsafe path
-    if (v && recovery_path_correct_) {
-      recovery_path_.setCurrent(true);
+    // If verified safe, take the intended path, otherwise, take the failsafe path
+    if (v && intended_path_correct_) {
+      intended_path_.setCurrent(true);
       // discard old FailsafePath and replace with new one
       failsafe_path_ = failsafe_path_2_;
       // repair path already incremented
     } else {
       failsafe_path_.setCurrent(true);
       // discard RepairPath
-      recovery_path_.setCurrent(false);
+      intended_path_.setCurrent(false);
       failsafe_path_.increment(sample_time_);
     }
 
@@ -387,36 +411,36 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
 
     // Desired movement, one timestep
     //  if not already on the repair path, plan a repair path
-    if (!recovery_path_.isCurrent()) {
+    if (!intended_path_.isCurrent()) {
       // plan repair path and replace
-      recovery_path_correct_ =
+      intended_path_correct_ =
           planSafetyShield(failsafe_path_.getPosition(), failsafe_path_.getVelocity(), failsafe_path_.getAcceleration(),
-                           1, a_max_manoeuvre, j_max_manoeuvre, recovery_path_);
+                           1, a_max_manoeuvre, j_max_manoeuvre, intended_path_);
     }
-    // Only plan new failsafe trajectory if the recovery path planning was successful.
-    if (recovery_path_correct_) {
+    // Only plan new failsafe trajectory if the intended path planning was successful.
+    if (intended_path_correct_) {
       // advance one step on repair path
-      recovery_path_.increment(sample_time_);
+      intended_path_.increment(sample_time_);
       bool failsafe_2_planning_success;
       failsafe_2_planning_success =
-          planSafetyShield(recovery_path_.getPosition(), recovery_path_.getVelocity(), recovery_path_.getAcceleration(),
+          planSafetyShield(intended_path_.getPosition(), intended_path_.getVelocity(), intended_path_.getAcceleration(),
                            0, a_max_manoeuvre, j_max_manoeuvre, failsafe_path_2_);
       // Check the validity of the planned path
-      if (!failsafe_2_planning_success || recovery_path_.getPosition() < failsafe_path_.getPosition()) {
-        recovery_path_correct_ = false;
+      if (!failsafe_2_planning_success || intended_path_.getPosition() < failsafe_path_.getPosition()) {
+        intended_path_correct_ = false;
       }
     }
-    // If all planning was correct, use new failsafe path with single recovery step
-    if (recovery_path_correct_) {
-      potential_path_ = failsafe_path_2_;
+    // If all planning was correct, use new failsafe path with single intended step
+    if (intended_path_correct_) {
+      monitored_path_ = failsafe_path_2_;
     } else {
       // If planning failed, use previous failsafe path
-      potential_path_ = failsafe_path_;
+      monitored_path_ = failsafe_path_;
     }
 
     //// Calculate start and goal pos of intended motion
     double s_d, ds_d, dds_d;
-    potential_path_.getFinalMotion(s_d, ds_d, dds_d);
+    monitored_path_.getFinalMotion(s_d, ds_d, dds_d);
     double ddds_d = 0.0;
     // Calculate goal
     Motion goal_motion;
@@ -425,7 +449,7 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
     } else {
       goal_motion = long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
     }
-    goal_motion.setTime(potential_path_.getTime(2));
+    goal_motion.setTime(monitored_path_.getTime(2));
     return goal_motion;
   } catch (const std::exception& exc) {
     spdlog::error("Exception in SafetyShield::computesPotentialTrajectory: {}", exc.what());
@@ -442,7 +466,7 @@ bool SafetyShield::planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvr
   // v_max is maximum of LTT or STP and v_limit is how much path velocity needs to be scaled to be under v_iso
   // First, plan a failsafe path that ends in a complete stop. This is the longest failsafe path possible.
   bool planning_success =
-      planSafetyShield(recovery_path_.getPosition(), recovery_path_.getVelocity(), recovery_path_.getAcceleration(),
+      planSafetyShield(intended_path_.getPosition(), intended_path_.getVelocity(), intended_path_.getAcceleration(),
                        0.0, a_max_manoeuvre, j_max_manoeuvre, failsafe_path_2_);
   if (!planning_success) {
     return false;
@@ -464,13 +488,13 @@ bool SafetyShield::planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvr
       spdlog::error("v_limit not between 0 and 1");
     }
   } else {
-    v_limit = recovery_path_.getVelocity();
+    v_limit = intended_path_.getVelocity();
   }
   // This is the PFL failsafe path that ends in a velocity that is under v_iso.
   double eps_ds = 0.001;
   // Plan to be slightly lower than v_limit to eliminate numerical errors
   planning_success =
-      planSafetyShield(recovery_path_.getPosition(), recovery_path_.getVelocity(), recovery_path_.getAcceleration(),
+      planSafetyShield(intended_path_.getPosition(), intended_path_.getVelocity(), intended_path_.getAcceleration(),
                        v_limit - eps_ds, a_max_manoeuvre, j_max_manoeuvre, failsafe_path_2_);
   // If the entire long-term trajectory is under iso-velocity, we dont need to check the velocity of the failsafe-path
   if (!is_under_iso_velocity) {
@@ -805,25 +829,6 @@ bool SafetyShield::verifyConstrainedContactSafety(std::vector<double> time_point
   return is_safe;
 }
 
-void SafetyShield::updateSafePath(bool is_safe) {
-  if (path_consistent_){
-    if (is_safe) {
-      // only override if planning was sucessful and safe
-      safe_path_ = potential_path_;
-    }
-    // we need to increment the path
-    safe_path_.increment(sample_time_);
-    // Set s to the new path position
-    path_s_ = safe_path_.getPosition();
-  }
-  if (is_safe) {
-    // only override if planning was sucessful and safe
-    verified_trajectory_ = monitored_trajectory_;
-    verified_trajectory_index_ = 0;
-  }
-  incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
-}
-
 Motion SafetyShield::getCurrentMotion() {
   Motion current_pos;
   current_pos = verified_trajectory_[verified_trajectory_index_];
@@ -948,7 +953,7 @@ std::vector<Motion> SafetyShield::getMotionsFromCurrentLTTandPath(const std::vec
   if (new_ltt_) {
     ltt = new_long_term_trajectory_;
   }
-  return getMotionsOfAllTimeStepsFromPath(ltt, potential_path_, time_points);
+  return getMotionsOfAllTimeStepsFromPath(ltt, monitored_path_, time_points);
 }
 
 std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
@@ -957,7 +962,7 @@ SafetyShield::getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>&
   if (new_ltt_) {
     ltt = new_long_term_trajectory_;
   }
-  return getInertiaMatricesOfAllTimeStepsFromPath(ltt, potential_path_, time_points);
+  return getInertiaMatricesOfAllTimeStepsFromPath(ltt, monitored_path_, time_points);
 }
 
 LongTermTraj SafetyShield::buildTrajectory(const std::vector<Motion>& interval_edges_motion,

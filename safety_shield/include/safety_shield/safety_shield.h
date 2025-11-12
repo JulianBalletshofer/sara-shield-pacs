@@ -100,7 +100,7 @@ class SafetyShield {
   /**
    * @brief path to go back to the long term plan
    */
-  Path recovery_path_;
+  Path intended_path_;
 
   /**
    * @brief fail-safe path of the current path
@@ -115,12 +115,12 @@ class SafetyShield {
   /**
    * @brief verified safe path
    */
-  Path safe_path_;
+  Path verified_path_;
 
   /**
    * @brief the constructed intended step + failsafe path
    */
-  Path potential_path_;
+  Path monitored_path_;
 
   /**
    * @brief Number of joints of the robot
@@ -148,7 +148,7 @@ class SafetyShield {
   bool is_safe_;
 
   /**
-   * @brief Whether or not the potential path is under the safe velocity the entire time.
+   * @brief Whether or not the monitored path is under the safe velocity the entire time.
    *
    */
   bool is_under_v_limit_ = false;
@@ -167,7 +167,7 @@ class SafetyShield {
    * the start of a proposed short-term plan. Again, if this occurs, that particular short-term
    * plan is verified as unsafe and the failsafe trajectory is chosen.
    */
-  bool recovery_path_correct_ = false;
+  bool intended_path_correct_ = false;
 
   /**
    * @brief The last published motion
@@ -380,6 +380,31 @@ class SafetyShield {
    * @return false planning failed
    */
   bool planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvre);
+
+  /**
+   * @brief Update the verified path to the monitored path if the verification is successful (safe) or increment the existing verified path otherwise.
+   * 
+   * @param is_safe Whether or not the verification was successful.
+   */
+  inline void updateSafePath(bool is_safe) {
+    if (path_consistent_){
+      if (is_safe) {
+        // only override if planning was sucessful and safe
+        verified_path_ = monitored_path_;
+      } else {
+        // we need to increment the path
+        verified_path_.increment(sample_time_);
+      }
+      // Set s to the new path position
+      path_s_ = verified_path_.getPosition();
+    }
+    if (is_safe) {
+      // only override if planning was sucessful and safe
+      verified_trajectory_ = monitored_trajectory_;
+      verified_trajectory_index_ = 0;
+    }
+    incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
+  }
 
   /**
    * @brief Check a given motion if it exceeds the joint limits.
@@ -600,13 +625,6 @@ class SafetyShield {
       trajectory_index_ = trajectory.size() - 1;
     }
   }
-
-  /**
-   * @brief Update the safe path to the monitored path if the verification is successful (safe) 
-   * or increment the existing safe path otherwise.
-   * @param is_safe Whether or not the verification was successful.
-   */
-  void updateSafePath(bool is_safe);
 
   /**
    * @brief Computes a trajectory from the given motion to the goal motion using ruckig.
