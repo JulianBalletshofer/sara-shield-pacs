@@ -1,8 +1,11 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
+cmake_policy(SET CMP0057 NEW)
+
 project(safety_shield VERSION 1.0.0 LANGUAGES CXX)
 
 # === General Configuration ===
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # === Debug Support =
@@ -169,46 +172,6 @@ target_link_libraries(debug_ruckig
     ruckig
 )
 
-# Set RPATH to find libraries in the build directory
-set_target_properties(debug_ruckig PROPERTIES
-    BUILD_RPATH "${CMAKE_CURRENT_BINARY_DIR}"
-    INSTALL_RPATH_USE_LINK_PATH TRUE
-)
-
-add_executable(04_waypoints_online src/04_waypoints_online.cpp)
-target_include_directories(04_waypoints_online PRIVATE
-    include
-    external/SaRA/ReachLib/include
-    external/LongTermPlanner/include
-    external/spdlog/include
-    external/yaml-cpp/include
-    external/ruckig/include
-    ${EIGEN3_INCLUDE_DIR}
-)
-target_link_libraries(04_waypoints_online
-    ${PROJECT_NAME}
-    long_term_planner
-    spdlog::spdlog
-    yaml-cpp
-    ruckig
-)
-
-# Set RPATH to find libraries in the build directory
-set_target_properties(04_waypoints_online PROPERTIES
-    BUILD_RPATH "${CMAKE_CURRENT_BINARY_DIR}"
-    INSTALL_RPATH_USE_LINK_PATH TRUE
-)
-
-# add_executable(04_waypoints_online src/04_waypoints_online.cpp)
-# target_link_libraries(
-#   04_waypoints_online
-#   PRIVATE
-#     ${PROJECT_NAME}     # your main shield library
-#     long_term_planner
-#     spdlog::spdlog
-#     yaml-cpp
-#     ruckig              # <-- Ruckig
-# )
 # === GTest Unit Tests ===
 enable_testing()
 
