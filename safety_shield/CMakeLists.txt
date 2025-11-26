@@ -8,7 +8,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# === Debug Support =
+# === Build Options ===
+option(BUILD_TESTS "Build unit tests" ON)
+option(BUILD_PYTHON_BINDINGS "Build Python bindings" OFF)
+option(ENABLE_COVERAGE "Enable coverage reporting" OFF)
+
+# === Debug Support ===
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT ENABLE_COVERAGE)
   message(STATUS "Enabling debug flags (-g -O0)")
   add_compile_options(-g -O0)
@@ -46,17 +51,46 @@ find_package(Eigen3 REQUIRED)
 # Make Eigen available to all subprojects
 include_directories(${EIGEN3_INCLUDE_DIR})
 
-find_package(GTest REQUIRED)
-include(GoogleTest)
+# GTest - optional
+if(BUILD_TESTS)
+  enable_testing()
+  find_package(GTest QUIET)
+  
+  if(GTest_FOUND)
+    include(GoogleTest)
+    message(STATUS "GTest found. Building tests.")
+  else()
+    message(WARNING "GTest not found. Skipping tests. Install GTest or set BUILD_TESTS=OFF to suppress this warning.")
+    set(BUILD_TESTS OFF)
+  endif()
+endif()
 
-# === External Dependencies (Internal Only) ===
-add_subdirectory(external/pybind11)
+# Python bindings - optional
+if(BUILD_PYTHON_BINDINGS)
+  find_package(Python3 COMPONENTS Interpreter Development.Module QUIET)
+  find_package(pybind11 QUIET)
+  
+  if(Python3_FOUND AND pybind11_FOUND)
+    message(STATUS "Building Python bindings")
+  else()
+    message(WARNING "Python3 or pybind11 not found. Skipping Python bindings.")
+    set(BUILD_PYTHON_BINDINGS OFF)
+  endif()
+endif()
+
+# === External Dependencies ===
+# Only add pybind11 if needed
+if(BUILD_PYTHON_BINDINGS AND Python3_FOUND AND pybind11_FOUND)
+  add_subdirectory(external/pybind11)
+endif()
+
 add_subdirectory(external/SaRA/ReachLib)
 add_subdirectory(external/LongTermPlanner)
 add_subdirectory(external/spdlog)
 add_subdirectory(external/yaml-cpp)
-# === turn of not needed parts to avoiud errors in ROS2 ===
-set(BUILD_EXAMPLES ON CACHE BOOL "Disable Ruckig examples" FORCE)
+
+# Ruckig dependency
+set(BUILD_EXAMPLES OFF CACHE BOOL "Disable Ruckig examples" FORCE)
 set(BUILD_CLOUD_CLIENT OFF CACHE BOOL "Disable Ruckig Cloud Client" FORCE)
 set(BUILD_PYTHON_MODULE OFF CACHE BOOL "Disable Ruckig python module" FORCE)
 add_subdirectory(external/ruckig)
@@ -82,7 +116,6 @@ add_library(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/pybind11/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/SaRA/ReachLib/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/LongTermPlanner/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog/include>
@@ -92,10 +125,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 )
 
 target_link_libraries(${PROJECT_NAME}
-  PUBLIC        # PUBLIC so dependents inherit SaRA automatically
-    SaRA
-  PRIVATE
-    long_term_planner spdlog yaml-cpp ruckig
+  PUBLIC SaRA  # PUBLIC so dependents inherit SaRA automatically
+  PRIVATE long_term_planner spdlog yaml-cpp ruckig
 )
 
 # === Install Targets and Headers ===
@@ -144,16 +175,17 @@ install(FILES
 )
 
 # === Optional: Pybind11 Python Bindings ===
-pybind11_add_module(safety_shield_py MODULE bindings/safety_shield_bindings.cpp)
-target_link_libraries(safety_shield_py PRIVATE ${PROJECT_NAME} long_term_planner spdlog yaml-cpp)
+if(BUILD_PYTHON_BINDINGS AND Python3_FOUND AND pybind11_FOUND)
+  pybind11_add_module(safety_shield_py MODULE bindings/safety_shield_bindings.cpp)
+  target_link_libraries(safety_shield_py PRIVATE ${PROJECT_NAME} long_term_planner spdlog yaml-cpp)
+endif()
 
 # === Optional: Debug Executables ===
 foreach(exec debug self_constrained_collision_debug unconstrained_collision_debug hrgym_scenario_debug debug_real_world_setup)
   add_executable(${exec} src/${exec}.cc)
   target_link_libraries(${exec} ${PROJECT_NAME} long_term_planner spdlog yaml-cpp)
 endforeach()
-# add_executable(test_stop_ruckig src/test_stop_ruckig.cpp)   # note .cpp path
-# target_link_libraries(test_stop_ruckig PRIVATE ruckig)
+
 add_executable(debug_ruckig src/debug_ruckig.cc)
 target_include_directories(debug_ruckig PRIVATE
     include
@@ -167,43 +199,41 @@ target_include_directories(debug_ruckig PRIVATE
 target_link_libraries(debug_ruckig
     ${PROJECT_NAME}
     long_term_planner
-    spdlog::spdlog
+    spdlog
     yaml-cpp
     ruckig
 )
 
 # === GTest Unit Tests ===
-enable_testing()
+if(BUILD_TESTS AND GTest_FOUND)
+  foreach(test_file
+    long_term_traj_tests
+    human_reach_tests
+    motion_tests
+    path_tests
+    robot_reach_tests
+    verify_iso_tests
+    safety_shield_tests
+    trajectory_utils_tests
+    verification_utils_tests
+    planning_utils_tests)
 
-foreach(test_file
-  long_term_traj_tests
-  human_reach_tests
-  motion_tests
-  path_tests
-  robot_reach_tests
-  verify_iso_tests
-  safety_shield_tests
-  trajectory_utils_tests
-  verification_utils_tests
-  planning_utils_tests)
+    add_executable(${test_file} tests/src/${test_file}.cc)
+    target_include_directories(${test_file} PUBLIC tests/include)
 
-  add_executable(${test_file} tests/src/${test_file}.cc)
-  target_include_directories(${test_file} PUBLIC tests/include)
+    target_link_libraries(${test_file}
+      PRIVATE
+      ${PROJECT_NAME}
+      GTest::GTest
+      GTest::Main
+    )
 
-  # Use only keyword-based signature
-  target_link_libraries(${test_file}
-    PRIVATE
-    ${PROJECT_NAME}
-    GTest::GTest
-    GTest::Main
-  )
+    if(${test_file} STREQUAL "planning_utils_tests")
+      target_link_libraries(${test_file} PRIVATE ruckig)
+    endif()
 
-  if(${test_file} STREQUAL "planning_utils_tests")
-    target_link_libraries(${test_file} PRIVATE ruckig)
-  endif()
-
-  gtest_discover_tests(${test_file})
-endforeach()
-
+    gtest_discover_tests(${test_file})
+  endforeach()
+endif()
 
 configure_file(${CMAKE_SOURCE_DIR}/CTestCustom.cmake ${CMAKE_BINARY_DIR})
