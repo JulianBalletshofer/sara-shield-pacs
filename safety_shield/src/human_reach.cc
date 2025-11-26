@@ -213,6 +213,7 @@ void HumanReach::measurement(const std::vector<reach_lib::Point>& human_joint_po
   if (human_joint_pos.size() != n_joints_meas_) {
     throw std::length_error("HumanReach::measurement: measurement vector human_joint_pos must have the same size as n_joints_meas_");
   }
+  use_measurements_ = true;
   try {
     if (use_kalman_filter_) {
       // Filter measurements
@@ -252,10 +253,17 @@ void HumanReach::measurement(const std::vector<reach_lib::Point>& human_joint_po
   }
 }
 
-void HumanReach::humanReachabilityAnalysis(double t_command, double t_brake) {
-  double t_reach_start = t_command - last_meas_timestep_;
-  double t_reach_end = t_reach_start + t_brake;
-  updateModels(t_reach_start, t_reach_end);
+void HumanReach::humanReachabilityAnalysis(double t_start, double duration) {
+  if (use_measurements_) {
+    double t_reach_start = t_start - last_meas_timestep_;
+    double t_reach_end = t_reach_start + duration;
+    updateModels(t_reach_start, t_reach_end);
+  } else {
+    // In the case of predictions, we don't assume that the measurement is at t=0.
+    double t_reach_start = t_start;
+    double t_reach_end = t_reach_start + duration;
+    updateModelsWithPrediction(t_reach_start, t_reach_end);
+  }
 }
 
 void HumanReach::updateModels(double t_a, double t_b) {
@@ -275,16 +283,48 @@ void HumanReach::updateModels(double t_a, double t_b) {
   }
 }
 
+void HumanReach::updateModelsWithPrediction(double t_a, double t_b) {
+  for (auto& model : human_models_) {
+    std::string type = model->get_mode();
+    if (type == "ARTICULATED-POS") {
+      static_cast<reach_lib::ArticulatedPos*>(model)->update_with_predictions(t_a, t_b, joint_predictions_);
+    } else if (type == "ARTICULATED-VEL") {
+      static_cast<reach_lib::ArticulatedVel*>(model)->update_with_predictions(t_a, t_b, joint_predictions_);
+    } else if (type == "ARTICULATED-ACCEL") {
+      try{
+        static_cast<reach_lib::ArticulatedAccel*>(model)->update_with_predictions(t_a, t_b, joint_predictions_);
+      } catch (reach_lib::PredictionNotSupportedException) {
+        // Do nothing
+      }
+    } else if (type == "ARTICULATED-COMBINED") {
+      try{
+        static_cast<reach_lib::ArticulatedCombined*>(model)->update_with_predictions(t_a, t_b, joint_predictions_);
+      } catch (reach_lib::PredictionNotSupportedException) {
+        // Do nothing
+      }
+    } else {
+      throw std::runtime_error("HumanReach::humanReachabilityAnalysis: Unknown model type: " + type);
+    }
+  }
+}
+
 /// update human model for each time interval and collect capsules in a list
 std::vector<std::vector<std::vector<reach_lib::Capsule>>> HumanReach::humanReachabilityAnalysisTimeIntervals(
   double t_command, const std::vector<double>& time_points) {
   std::vector<std::vector<std::vector<reach_lib::Capsule>>> reachable_capsules;
-  double t_begin = t_command - last_meas_timestep_;
+  double t_begin = t_command;
+  if (use_measurements_) {
+    t_begin -= last_meas_timestep_;
+  }
   for (int i = 0; i < time_points.size() - 1; i++) {
     std::vector<std::vector<reach_lib::Capsule>> human_reach_capsules;
     double t_begin_interval = t_begin + time_points[i];
     double t_end_interval = t_begin + time_points[i + 1];
-    updateModels(t_begin_interval, t_end_interval);
+    if (use_measurements_) {
+      updateModels(t_begin_interval, t_end_interval);
+    } else {
+      updateModelsWithPrediction(t_begin_interval, t_end_interval);
+    }
     reachable_capsules.push_back(getAllCapsules());
   }
   return reachable_capsules;

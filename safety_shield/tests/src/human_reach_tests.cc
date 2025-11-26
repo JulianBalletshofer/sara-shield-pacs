@@ -836,6 +836,127 @@ TEST_F(HumanReachTimeIntervalTestArm, IntervalTest2) {
 
 }
 
+TEST_F(HumanReachTest, PredictionBasedReachabilityTest) {
+  // Test the new prediction-based functionality
+
+  // Create predictions for a single joint at different time points
+  // Time 0.05s: joint at position (0,0,0) with prediction error radius 0.02
+  std::vector<reach_lib::Sphere> spheres_t1 = {
+    reach_lib::Sphere(reach_lib::Point(0.0, 0.0, 0.0), 0.02)
+  };
+  reach_lib::Prediction pred_t1 = std::make_pair(0.05, spheres_t1);
+
+  // Time 0.10s: joint at position (0.1,0,0) with prediction error radius 0.03
+  std::vector<reach_lib::Sphere> spheres_t2 = {
+    reach_lib::Sphere(reach_lib::Point(0.1, 0.0, 0.0), 0.03)
+  };
+  reach_lib::Prediction pred_t2 = std::make_pair(0.10, spheres_t2);
+
+  // Time 0.15s: joint at position (0.2,0,0) with prediction error radius 0.025
+  std::vector<reach_lib::Sphere> spheres_t3 = {
+    reach_lib::Sphere(reach_lib::Point(0.2, 0.0, 0.0), 0.025)
+  };
+  reach_lib::Prediction pred_t3 = std::make_pair(0.15, spheres_t3);
+
+  std::vector<reach_lib::Prediction> predictions = {pred_t1, pred_t2, pred_t3};
+
+  // Set predictions instead of measurements
+  human_reach_->predictions(predictions);
+
+  // Perform reachability analysis using predictions
+  double t_start = 0.05;
+  double duration = 0.10;
+  human_reach_->humanReachabilityAnalysis(t_start, duration);
+
+  // Get the resulting capsules
+  std::vector<reach_lib::Capsule> vel_caps = human_reach_->getArticulatedVelCapsules();
+
+  // Verify that we got valid capsules
+  EXPECT_GT(vel_caps.size(), 0);
+
+  // The radius should incorporate prediction errors rather than measurement errors
+  // This is the key difference from measurement-based approach
+  EXPECT_GT(vel_caps[0].r_, 0.0);
+}
+
+TEST_F(HumanReachTest, PredictionVsMeasurementModeTest) {
+  // Test that the use_measurements_ flag correctly switches between modes
+
+  // First, use measurements (traditional approach)
+  reach_lib::Point p(1.0, 2.0, 3.0);
+  std::vector<reach_lib::Point> human_joint_pos = {p};
+  double t_meas = 1.0;
+  human_reach_->measurement(human_joint_pos, t_meas);
+
+  // Perform analysis with measurements
+  double t_command = 1.05;
+  double t_brake = 0.1;
+  human_reach_->humanReachabilityAnalysis(t_command, t_brake);
+  std::vector<reach_lib::Capsule> measurement_caps = human_reach_->getArticulatedVelCapsules();
+
+  // Reset and switch to predictions
+  human_reach_->reset();
+
+  // Create equivalent prediction
+  std::vector<reach_lib::Sphere> spheres = {
+    reach_lib::Sphere(reach_lib::Point(1.0, 2.0, 3.0), 0.01) // Small prediction error
+  };
+  reach_lib::Prediction pred = std::make_pair(1.05, spheres);
+  std::vector<reach_lib::Prediction> predictions = {pred};
+
+  human_reach_->predictions(predictions);
+
+  // Perform analysis with predictions (same time parameters)
+  human_reach_->humanReachabilityAnalysis(1.05, 0.1);
+  std::vector<reach_lib::Capsule> prediction_caps = human_reach_->getArticulatedVelCapsules();
+
+  // Both should produce valid results, but they will differ due to different error handling
+  EXPECT_GT(measurement_caps.size(), 0);
+  EXPECT_GT(prediction_caps.size(), 0);
+  EXPECT_EQ(measurement_caps.size(), prediction_caps.size());
+}
+
+TEST_F(HumanReachTimeIntervalTestSingleJoint, PredictionBasedTimeIntervalsTest) {
+  // Test prediction-based analysis with time intervals
+
+  // Create predictions for multiple time points
+  std::vector<reach_lib::Sphere> spheres_t0 = {
+    reach_lib::Sphere(reach_lib::Point(0.0, 0.0, 0.0), 0.01)
+  };
+  reach_lib::Prediction pred_t0 = std::make_pair(0.0, spheres_t0);
+
+  std::vector<reach_lib::Sphere> spheres_t1 = {
+    reach_lib::Sphere(reach_lib::Point(0.2, 0.0, 0.0), 0.02)
+  };
+  reach_lib::Prediction pred_t1 = std::make_pair(0.05, spheres_t1);
+
+  std::vector<reach_lib::Sphere> spheres_t2 = {
+    reach_lib::Sphere(reach_lib::Point(0.4, 0.0, 0.0), 0.03)
+  };
+  reach_lib::Prediction pred_t2 = std::make_pair(0.10, spheres_t2);
+
+  std::vector<reach_lib::Prediction> predictions = {pred_t0, pred_t1, pred_t2};
+
+  // Set predictions
+  human_reach_single_joint_time_interval_->predictions(predictions);
+
+  // Define time intervals
+  std::vector<double> time_intervals = {0.0, 0.05, 0.10};
+
+  // Perform time interval analysis with predictions
+  std::vector<std::vector<std::vector<reach_lib::Capsule>>> interval_capsules =
+    human_reach_single_joint_time_interval_->humanReachabilityAnalysisTimeIntervals(
+      0.0, time_intervals
+    );
+
+  // Verify we get results for each interval
+  EXPECT_EQ(interval_capsules.size(), 2); // Two intervals: [0,0.05] and [0.05,0.10]
+
+  // Each interval should have capsules for at least one model type. ACCEL doesn't work yet.
+  EXPECT_GT(interval_capsules[0].size(), 0);
+  EXPECT_GT(interval_capsules[1].size(), 0);
+}
+
 }  // namespace safety_shield
 
 int main(int argc, char **argv) {

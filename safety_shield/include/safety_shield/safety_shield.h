@@ -871,8 +871,24 @@ class SafetyShield {
    * @param[in] human_measurement A vector of human joint measurements (list of reach_lib::Points)
    * @param[in] time The timestep of the measurement in seconds.
    */
-  inline void humanMeasurement(const std::vector<reach_lib::Point> human_measurement, double time) {
+  inline void humanMeasurement(std::vector<reach_lib::Point> human_measurement, double time) {
     human_reach_->measurement(human_measurement, time);
+  }
+
+  /**
+   * @brief Receive a new human prediction
+   * @details The difference between a measurement and a prediction is two-fold. 
+   *  First, predictions have a bounded prediction error per predicted joint, whereas 
+   *  measurements only have a constant error for all joints.
+   *  Second, we can use a set of future predictions, e.g., for the human pose in 50, 100, and 150ms.
+   * @param[in] human_predictions A vector of human joint predictions (list of reach_lib::Points)
+   *            Predictions are of type std::pair<double, std::vector<reach_lib::Sphere>> 
+   *            The first value is the time for which we predict the joint positions.
+   *            The second value incorporates the measurement and bounded error.
+   *            The center of the sphere is the predicted position and the radius is the error.
+   */
+  inline void humanPrediction(std::vector<reach_lib::Prediction> human_predictions) {
+    human_reach_->predictions(human_predictions);
   }
 
   /**
