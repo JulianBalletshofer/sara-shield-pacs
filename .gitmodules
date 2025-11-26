@@ -14,3 +14,6 @@
 [submodule "safety_shield/external/LongTermPlanner"]
 	path = safety_shield/external/LongTermPlanner
 	url = https://github.com/yannickBurkhardt/LongTermPlanner.git
+[submodule "safety_shield/external/ruckig"]
+	path = safety_shield/external/ruckig
+	url = https://github.com/pantor/ruckig
