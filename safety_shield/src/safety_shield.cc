@@ -599,7 +599,7 @@ Motion SafetyShield::step(double cycle_begin_time) {
         monitored_trajectory_ = stepNonPathConistent(current_motion);
       } catch (const std::exception& e) {
         spdlog::warn("SafetyShield::step: stepNonPathConistent failed: {}", e.what());
-        bool is_safe_ = false;
+        is_safe_ = false;
         spdlog::info("SafetyShield::step: stay on verified trajectory");
         updateSafePath(is_safe_);
         return getCurrentMotion();
