@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.16)
-cmake_policy(SET CMP0057 NEW)
 
 project(safety_shield VERSION 1.0.0 LANGUAGES CXX)
 
@@ -7,11 +6,9 @@ project(safety_shield VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # === Build Options ===
-option(BUILD_TESTS "Build unit tests" ON)
+option(SAFETY_SHIELD_BUILD_TESTS "Build unit tests" ON)
 option(BUILD_PYTHON_BINDINGS "Build Python bindings" OFF)
 option(ENABLE_COVERAGE "Enable coverage reporting" OFF)
 
@@ -54,7 +51,7 @@ find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
 # GTest - optional
-if(BUILD_TESTS)
+if(SAFETY_SHIELD_BUILD_TESTS)
   enable_testing()
   find_package(GTest QUIET)
   
@@ -62,8 +59,8 @@ if(BUILD_TESTS)
     include(GoogleTest)
     message(STATUS "GTest found. Building tests.")
   else()
-    message(WARNING "GTest not found. Skipping tests. Install GTest or set BUILD_TESTS=OFF to suppress this warning.")
-    set(BUILD_TESTS OFF)
+    message(WARNING "GTest not found. Skipping tests. Install GTest or set SAFETY_SHIELD_BUILD_TESTS=OFF to suppress this warning.")
+    set(SAFETY_SHIELD_BUILD_TESTS OFF)
   endif()
 endif()
 
@@ -207,7 +204,7 @@ target_link_libraries(debug_ruckig
 )
 
 # === GTest Unit Tests ===
-if(BUILD_TESTS AND GTest_FOUND)
+if(SAFETY_SHIELD_BUILD_TESTS AND GTest_FOUND)
   foreach(test_file
     long_term_traj_tests
     human_reach_tests

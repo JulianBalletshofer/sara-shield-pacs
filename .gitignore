@@ -45,6 +45,3 @@ __pycache__/
 cmake-build-debug/
 cmake-build-debug-coverage/
 cmake-build-release/
-
-# ignore external libraries
-safety_shield/external/ruckig
