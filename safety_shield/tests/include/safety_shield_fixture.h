@@ -36,6 +36,10 @@ class SafetyShieldExposed : public SafetyShield {
 
   using SafetyShield::planSafetyShield;
 
+  using SafetyShield::checkMotionForJointLimits;
+
+  using SafetyShield::checkTrajectoryForJointLimits;
+
   SafetyShieldExposed() {}
 
   explicit SafetyShieldExposed(double sample_time, std::string trajectory_config_file, std::string robot_config_file,

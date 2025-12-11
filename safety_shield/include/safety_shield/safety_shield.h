@@ -14,7 +14,6 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <stdexcept>
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
@@ -23,21 +22,23 @@
 #include <cmath>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "long_term_planner/long_term_planner.h"
 #include "reach_lib.hpp"
+#include "safety_shield/config_utils.h"
 #include "safety_shield/exceptions.h"
 #include "safety_shield/human_reach.h"
 #include "safety_shield/long_term_traj.h"
 #include "safety_shield/motion.h"
 #include "safety_shield/path.h"
+#include "safety_shield/planning_utils.h"
 #include "safety_shield/robot_reach.h"
+#include "safety_shield/trajectory_utils.h"
 #include "safety_shield/verify.h"
 #include "safety_shield/verify_iso.h"
-#include "safety_shield/trajectory_utils.h"
-#include "safety_shield/config_utils.h"
 #include "spdlog/spdlog.h"
 
 #ifndef safety_shield_H
@@ -337,7 +338,7 @@ class SafetyShield {
 
   /**
    * @brief This value is substracted from the maximal allowed q pos values before planning the LTT.
-   * 
+   *
    */
   double planning_qpos_tolerance_ = 0.01;
 
@@ -381,18 +382,28 @@ class SafetyShield {
   bool planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvre);
 
   /**
-   * @brief Update the safe path to the monitored path if the verification is successful (safe) or increment the existing safe path otherwise.
+   * @brief Update the verified path to the monitored path if the verification is successful (safe) or increment the existing verified path otherwise.
    * 
    * @param is_safe Whether or not the verification was successful.
    */
   inline void updateSafePath(bool is_safe) {
-    if (is_safe) {
-      verified_path_ = monitored_path_;
-    } else {
-      verified_path_.increment(sample_time_);
+    if (path_consistent_){
+      if (is_safe) {
+        // only override if planning was sucessful and safe
+        verified_path_ = monitored_path_;
+      } else {
+        // we need to increment the path
+        verified_path_.increment(sample_time_);
+      }
+      // Set s to the new path position
+      path_s_ = verified_path_.getPosition();
     }
-    // Set s to the new path position
-    path_s_ = verified_path_.getPosition();
+    if (is_safe) {
+      // only override if planning was sucessful and safe
+      verified_trajectory_ = monitored_trajectory_;
+      verified_trajectory_index_ = 0;
+    }
+    incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
   }
 
   /**
@@ -403,6 +414,15 @@ class SafetyShield {
    * @return false if path exceeds joint limits
    */
   bool checkMotionForJointLimits(Motion& motion);
+
+  /**
+   * @brief Check a given trajectory if it exceeds the joint limits.
+   *
+   * @param std::vector<Motion> trajectory Motion to check
+   * @return true if path does NOT exceed joint limits
+   * @return false if path exceeds joint limits
+   */
+  bool checkTrajectoryForJointLimits(std::vector<Motion>& trajectory);
 
   /**
    * @brief round a continuous time to a timestep
@@ -486,10 +506,8 @@ class SafetyShield {
                const std::vector<double>& a_max_allowed, const std::vector<double>& j_max_allowed,
                const std::vector<double>& a_max_path, const std::vector<double>& j_max_path,
                const LongTermTraj& long_term_trajectory, RobotReach* robot_reach, HumanReach* human_reach,
-               VerifyISO* verify, 
-               const std::vector<reach_lib::AABB> &environment_elements,
-               ShieldType shield_type = ShieldType::SSM,
-               ContactType eef_contact_type = ContactType::EDGE);
+               VerifyISO* verify, const std::vector<reach_lib::AABB>& environment_elements,
+               ShieldType shield_type = ShieldType::SSM, ContactType eef_contact_type = ContactType::EDGE);
 
   /**
    * @brief Construct a new Safety Shield object from config files.
@@ -512,14 +530,13 @@ class SafetyShield {
   SafetyShield(double sample_time, std::string trajectory_config_file, std::string robot_config_file,
                std::string mocap_config_file, double init_x, double init_y, double init_z, double init_roll,
                double init_pitch, double init_yaw, const std::vector<double>& init_qpos,
-               const std::vector<reach_lib::AABB> &environment_elements,
-               ShieldType shield_type = ShieldType::SSM,
+               const std::vector<reach_lib::AABB>& environment_elements, ShieldType shield_type = ShieldType::SSM,
                ContactType eef_contact_type = ContactType::EDGE);
 
   /**
    * @brief A SafetyShield destructor
    */
-  ~SafetyShield(){
+  ~SafetyShield() {
     delete robot_reach_;
     delete human_reach_;
     delete verify_;
@@ -541,8 +558,8 @@ class SafetyShield {
    * @param eef_contact_type The worst-case contact type on the end effector.
    */
   void reset(double init_x, double init_y, double init_z, double init_roll, double init_pitch, double init_yaw,
-             const std::vector<double>& init_qpos, double current_time, 
-             const std::vector<reach_lib::AABB> &environment_elements, ShieldType shield_type = ShieldType::SSM,
+             const std::vector<double>& init_qpos, double current_time,
+             const std::vector<reach_lib::AABB>& environment_elements, ShieldType shield_type = ShieldType::SSM,
              ContactType eef_contact_type = ContactType::EDGE);
 
   /**
@@ -554,15 +571,129 @@ class SafetyShield {
   Motion computesPotentialTrajectory(bool v, const std::vector<double>& prev_speed);
 
   /**
+   * @brief describes the stopping mode.
+   * @details if true, path consistent braking is used.
+   */
+  bool path_consistent_ = true;
+
+  /**
+   * @brief intended_trajectory_ is the trajectory that the safety shield intends to follow to a goal_motion.
+   * Note: this trajectory could also be used for Path Consistent braking to only compute the Jacobians, Inertias, and
+   * velocity capsules at the time points during verification later.
+   */
+  std::vector<Motion> intended_trajectory_;
+
+  /**
+   * @brief verified_trajectory_ is a verified monitored trajectory consisting of one time step of the intended
+   * trajectory followed by a non path-consistent failsafe trajectory.
+   */
+  std::vector<Motion> verified_trajectory_;
+
+  /**
+   * @brief monitored_trajectory_ is a trajectory consisting of one time step of the intended trajectory followed by a
+   * non path-consistent failsafe trajectory.
+   */
+  std::vector<Motion> monitored_trajectory_;
+
+  /**
+   * @brief verified_trajectory_index_ defines the current step on the verified trajectory.
+   */
+  int verified_trajectory_index_ = 0;
+
+  /**
+   * @brief intended_trajectory_index_ defines the current step on the intended trajectory.
+   */
+  int intended_trajectory_index_ = 0;  // index of the long term trajectory
+
+  /**
+   * @brief Set the safety shield to non path consistent braking and override trajectory limits.
+   * Note: we need to adjust combine it with the reset functionality in case we set it in the beginning
+   */
+  inline void setNonPathConsistent() {
+    path_consistent_ = false;
+    a_max_ltt_ = a_max_allowed_;
+    j_max_ltt_ = j_max_allowed_;
+  };
+
+  /**
+   * @brief Increments the trajectory index.
+   * @details If the index is larger than the size of the trajectory, it is set to the last index.
+   */
+  inline void incrementTrajectory(int& trajectory_index_, const std::vector<Motion>& trajectory) {
+    trajectory_index_++;
+    if (trajectory_index_ >= trajectory.size()) {
+      trajectory_index_ = trajectory.size() - 1;
+    }
+  }
+
+  /**
+   * @brief Computes a trajectory from the given motion to the goal motion using ruckig.
+   * @param start_motion The starting motion of the trajectory.
+   * @param goal_motion The goal motion of the trajectory.
+   * @param start_time The time at which the trajectory starts.
+   * @returns planned trajectory as a vector of motions.
+   */
+  std::vector<Motion> goalPlanningRuckig(const Motion& start_motion, const Motion& goal_motion,
+                                         const double start_time = 0.0);
+
+  /**
+   * @brief Computes a failsafe trajectory from the given motion to a full stop of the robot using ruckig.
+   * @details This function computes a failsafe trajectory that is not path-consistent using velocity control.
+   * @param start_motion The starting motion of the trajectory.
+   * @param start_time The time at which the trajectory starts.
+   * @returns failsafe trajectory as a vector of motions.
+   */
+  std::vector<Motion> computeFailsafeTrajectoryNonPathConsistent(const Motion& start_motion,
+                                                                 const double start_time = 0.0);
+
+  /**
+   * @brief Construct a monitored trajectory consisting of one time step of the intended trajectory followed by a non
+   * path-consistent failsafe trajectory.
+   * @param current_motion The current motion of the robot.
+   * @param motion_after_intended_step The motion after the intended step.
+   * @return monitored trajectory as a vector of motions.
+   */
+  std::vector<Motion> computeMonitoredTrajectory(const Motion& current_motion,
+                                                 const Motion& motion_after_intended_step);
+
+  /**
+   * @brief Computes list of motions at the edges of the time intervals - sparse monitored trajectory.
+   * @param time_points Time points that define the edges of the time intervals.
+   * @param monitored_trajectory The monitored trajectory.
+   * @return interval edges motions (sparse monitored trajectory).
+   */
+  std::vector<Motion> computeIntervalEdgeMotions(const std::vector<Motion>& monitored_trajectory,
+                                                 const std::vector<double>& time_points);
+
+  /**
    * @brief Gets the information that the next simulation cycle (sample time) has started
+   * uses either stepNonPathConistent or stepPathConsistent depending on the shield type.
    * @param cycle_begin_time timestep of begin of current cycle in seconds.
-   *
    * @return next motion to be executed
    */
   Motion step(double cycle_begin_time);
 
   /**
+   * @brief Step the safety shield with non path consistent braking.
+   * Computes monitored trajectory and returns the interval edges motions.
+   * This function sets the monitored_trajectory_.
+   * @details This function is called in every cycle of the safety shield.
+   * @return interval edges motions (sparse monitored trajectory)
+   */
+  std::vector<Motion> stepNonPathConistent(const Motion& current_motion);
+
+  /**
+   * @brief Step the safety shield with path consistent braking.
+   * Computes monitored trajectory and returns the interval edges motions.
+   * @details This function is called in every cycle of the safety shield.
+   * @return interval edges motions (sparse monitored trajectory)
+   */
+  std::vector<Motion> stepPathConistent(const Motion& current_motion);
+
+  /**
    * @brief Calculates and returns the current motion
+   * For path consistent braking, this is the current motion of current path (failsafe or recovery).
+   * For non path consistent braking, this is the current position on the verified Trajectory.
    */
   Motion getCurrentMotion();
 
@@ -581,89 +712,92 @@ class SafetyShield {
    * @brief Evaluate if replanning a new LTT is necessary and plan one if needed.
    * @details Should be called in the `step()` function if the new_goal_ flag is set, i.e.,
    *  the user requested a new goal to move to.
+   * For Path Conistent:
    *  This function sets the following internal attributes:
    *    - new_long_term_trajectory_: The newly calculated LTT
    *    - new_ltt_: Flag that indicates that a new LTT is available
    *    - new_ltt_processed_: Flag that indicates that the new LTT was passed to the safety verification at least once.
-   * 
+   * For Non Path Consistent:
+   *  This function sets the following internal attributes:
+   *   - intended_trajectory_: The newly calculated intended trajectory
+   *   - intended_trajectory_index_: The index of the intended trajectory (reset to 0)
    * @param current_motion current motion we are in.
    */
   void newGoalPlanning(Motion& current_motion);
 
   /**
-   * @brief verify the safety of the movement from the current motion to the goal motion.
-   * 
+   * @brief verify the safety of the monitored trajectory.
    * @details If the shield mode is OFF, the function will always return true.
+   * This functions uses the sparse_trajectory object to verify the safety of the trajectory.
+   * This function sets robot_capsules_time_intervals_ and human_capsules_time_intervals_.
    * This function sets robot_capsules_ and human_capsules_ needed for plotting.
-   * 
-   * @param[in] current_motion Current motion the robot is in.
-   * @param[in] goal_motion Goal motion the robot wants to move to.
-   * @param[in] alpha_i Maximum cartesian acceleration of robot joints
+   * @param sparse_trajectory The sparse monitored trajectory with features used for verification.
+   * For PFL: the sparse_trajectory contains the dynamics, alpha and beta values of the robot at the edges
+   * of the time intervals.
+   * For SSM: the sparse_trajectory contains alpha values at the edges of the time
+   * intervals.
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifySafety(Motion& current_motion, Motion& goal_motion, const std::vector<double>& alpha_i);
+  bool verifySafety(const LongTermTraj& sparse_trajectory);
 
   /**
    * @brief verify if the contact energy constraint is satisfied
-   * 
    * @param[in] time_points Time points that define the edges of the time intervals.
    * @param[in] interval_edges_motions Motions at the edges of the time intervals.
    * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifyContactEnergySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions, int& collision_index);
+  bool verifyContactEnergySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions,
+                                 int& collision_index);
 
   /**
    * @brief verify if the contact energy constraint is satisfied.
-   * 
    * @details First classifies the contact type and then checks if the contact energy constraint is satisfied.
-   * 
+   * @param[in] sparse_trajectory The sparse monitored trajectory.
    * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] interval_edges_motions Motions at the edges of the time intervals.
    * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifyContactEnergySafetyByContactType(std::vector<double> time_points, std::vector<Motion> interval_edges_motions, int& collision_index);
+  bool verifyContactEnergySafetyByContactType(const LongTermTraj& sparse_trajectory, std::vector<double> time_points,
+                                              int& collision_index);
 
   /**
-   * @brief Build the robot capsule velocity pointers for the given interval edges motions.
-   * 
-   * @param[in] interval_edges_motions The motions at the edges of the time intervals.
+   * @brief Build the robot capsule velocity pointers for the given sparse trajectory with dynamics.
+   * @param[in] sparse_trajectory The sparse monitored trajectory.
    * @param[out] vel_cap_start The pointer to the capsule velocity at the start of the interval.
    * @param[out] vel_cap_end The pointer to the capsule velocity at the end of the interval.
    */
   void buildRobotVelocityPointers(
-    const std::vector<Motion>& interval_edges_motions,
-    std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_start,
-    std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end);
+      const LongTermTraj& sparse_trajectory,
+      std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_start,
+      std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end);
 
   /**
    * @brief verify if the contact velocity constraint is satisfied.
-   * 
    * @details This function is not fully implemented and therefore not tested!!!
    * @details This function is not in use.
-   * 
    * @param[in] time_points Time points that define the edges of the time intervals.
    * @param[in] interval_edges_motions Motions at the edges of the time intervals.
    * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifyContactVelocitySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions, int& collision_index);
+  bool verifyContactVelocitySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions,
+                                   int& collision_index);
 
   /**
    * @brief verify if the constrained contact constraint (clamping) is satisfied
-   * 
    * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] interval_edges_motions Motions at the edges of the time intervals.
+   * @param[in] sparse_trajectory The sparse monitored trajectory.
    * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
    * @return true if safe
    * @return false if unsafe
    */
-  bool verifyConstrainedContactSafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions, int& collision_index);
+  bool verifyConstrainedContactSafety(std::vector<double> time_points, LongTermTraj& sparse_trajectory,
+                                      int& collision_index);
 
   /**
    * @brief Calculates a new trajectory from current joint state to desired goal state.
@@ -691,7 +825,7 @@ class SafetyShield {
    * @brief Set the worst-case contact type on the end effector.
    * @details Use this function if your end effector tool changes.
    * @details Calls buildMaxContactEnergies() to update the contact energies.
-   * 
+   *
    * @param contact_type choose between BLUNT, EDGE, WEDGE, and SHEET
    */
   inline void setEEFContactType(ContactType contact_type) {
@@ -707,19 +841,30 @@ class SafetyShield {
 
   /**
    * @brief Calculate the list of motions on the LTT based on the current path and the given time points.
-   * 
+   *
    * @param time_points Time points to return the list of motions at.
-   * @return std::vector<Motion> 
+   * @return std::vector<Motion>
    */
   std::vector<Motion> getMotionsFromCurrentLTTandPath(const std::vector<double>& time_points);
 
   /**
+   * @brief builds the trajectory object and calculates the dynamics.
+   * @param interval_edges_motion the motions at the edges of the time intervals.
+   * @param compute_dynamics bool to create object with dynamics. 
+   * if compute_dynamics true: This function calculates the Jacobians, Inertias, and velocity capsules at the time points used for
+   * verification. if compute_dynamics false: This function calculates the alpha values at the time points used for verification.
+   * @return LongTermTraj trajectory.
+   */
+  LongTermTraj buildTrajectory(const std::vector<Motion>& interval_edges_motion, bool compute_dynamics);
+
+  /**
    * @brief Calculate the list of link inertia matrices on the LTT based on the current path and the given time points.
-   * 
+   *
    * @param time_points Time points to return the list of motions at.
    * @return std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
    */
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>& time_points);
+  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
+  getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>& time_points);
 
   /**
    * @brief Receive a new human measurement
@@ -777,13 +922,32 @@ class SafetyShield {
     return capsules;
   }
 
+  /** Note: This function is mainly used for visualization and debugging.
+   * @brief Get the Robot Reach Capsules as a vector of [p1[0:3], p2[0:3], r] for each intervall of the monitored
+   * trajectory p1: Center point of half sphere 1 p2: Center point of half sphere 2 r: Radius of half spheres and
+   * cylinder
+   *
+   * @return std::vector<std::vector<std::vector<double>>> Capsules
+   */
+  inline std::vector<std::vector<std::vector<double>>> getAllRobotReachCapsulesOverTime() {
+    std::vector<std::vector<std::vector<double>>> all_capsules;
+    for (const auto& timestep_capsules : robot_capsules_time_intervals_) {
+      std::vector<std::vector<double>> converted_capsules;
+      for (const auto& capsule : timestep_capsules) {
+        converted_capsules.push_back(convertCapsule(capsule));
+      }
+      all_capsules.push_back(converted_capsules);
+    }
+    return all_capsules;
+  }
+
   /**
    * @brief Get the Human Reach Capsules as a vector of [p1[0:3], p2[0:3], r]
    * p1: Center point of half sphere 1
    * p2: Center point of half sphere 2
    * r: Radius of half spheres and cylinder
    *
-   * @param type Type of capsule. 
+   * @param type Type of capsule.
    *  If in combined mode: select 0 for combined model
    *  If not in combined mode: select 0 for POS, 1 for VEL, and 2 for ACCEL
    *
@@ -791,8 +955,9 @@ class SafetyShield {
    */
   inline std::vector<std::vector<double>> getHumanReachCapsules(int type = 0) {
     if (type < 0 || type >= human_capsules_.size()) {
-      throw std::invalid_argument("Invalid type of human reach capsules requested. Please select a value between 0 and " +
-                                  std::to_string(human_capsules_.size() - 1));
+      throw std::invalid_argument(
+          "Invalid type of human reach capsules requested. Please select a value between 0 and " +
+          std::to_string(human_capsules_.size() - 1));
     }
     std::vector<std::vector<double>> capsules(human_capsules_[type].size(), std::vector<double>(7));
     for (int i = 0; i < human_capsules_[type].size(); i++) {
@@ -816,7 +981,6 @@ class SafetyShield {
   inline ContactType getEEFContactType() const {
     return eef_contact_type_;
   }
-
 };
 }  // namespace safety_shield
 

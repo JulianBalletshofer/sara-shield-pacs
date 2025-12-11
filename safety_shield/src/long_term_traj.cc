@@ -23,15 +23,16 @@ Motion LongTermTraj::interpolate(double s, double ds, double dds, double ddds) c
   // Example: s=2.465, sample_time = 0.004 --> ind = 616.25
   int ind1 = getLowerIndex(s);
   double dt = getModIndex(s) * sample_time_;
-  std::vector<double> q1 = getNextMotionAtIndex(ind1).getAngle();
-  std::vector<double> dq1 = getNextMotionAtIndex(ind1).getVelocity();
-  std::vector<double> ddq1 = getNextMotionAtIndex(ind1).getAcceleration();
-  std::vector<double> dddq1 = getNextMotionAtIndex(ind1).getJerk();
+  Motion motion = getNextMotionAtIndex(ind1);
+  std::vector<double> q1 = motion.getAngle();
+  std::vector<double> dq1 = motion.getVelocity();
+  std::vector<double> ddq1 = motion.getAcceleration();
+  std::vector<double> dddq1 = motion.getJerk();
   std::vector<double> q(q1.size());
   std::vector<double> dq(q1.size());
   std::vector<double> ddq(q1.size());
   std::vector<double> dddq(q1.size());
-  std::vector<double> cartesian_velocities = getNextMotionAtIndex(ind1).getMaximumCartesianVelocities();
+  std::vector<double> cartesian_velocities = motion.getMaximumCartesianVelocities();
   for (int i = 0; i < q1.size(); i++) {
     // Linearly interpolate between lower and upper index of position
     q[i] = q1[i] + dt * dq1[i] + 1.0 / 2 * dt * dt * ddq1[i] + 1.0 / 6 * dt * dt * dt * dddq1[i];
@@ -52,7 +53,7 @@ Motion LongTermTraj::interpolate(double s, double ds, double dds, double ddds) c
   Motion m = Motion(0.0, q, dq, ddq, dddq, s);
   if (cartesian_velocities.size() == q1.size()) {
     m.setMaximumCartesianVelocities(cartesian_velocities);
-    m.setMaximumCartesianVelocity(getNextMotionAtIndex(ind1).getMaximumCartesianVelocity() * ds);
+    m.setMaximumCartesianVelocity(motion.getMaximumCartesianVelocity() * ds);
   }
   return m;
 }
@@ -193,6 +194,15 @@ void LongTermTraj::calculateAlphaBeta() {
         beta_i_[j] = std::max(beta_i_[j], std::max(beta_1, beta_2));
     }
   }
+}
+
+std::vector<double> LongTermTraj::getTimePoints() const {
+  std::vector<double> time_points;
+  time_points.reserve(length_);
+  for (const auto& motion : long_term_traj_) {
+    time_points.push_back(motion.getTime());
+  }
+  return time_points;
 }
 
 }  // namespace safety_shield

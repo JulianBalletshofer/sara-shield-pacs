@@ -15,10 +15,9 @@
  */
 
 #include <Eigen/Dense>
-#include <stdexcept>
-
 #include <algorithm>
 #include <deque>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -58,7 +57,6 @@ class LongTermTraj {
    */
   std::vector<Motion> long_term_traj_;
 
-  
   /**
    * @brief maximum joint velocity allowed
    */
@@ -111,9 +109,9 @@ class LongTermTraj {
 
   /**
    * @brief The SE3 velocities of the robot for each capsule for each motion.
-   * 
+   *
    * @details capsule_velocities_[motion][capsule]
-   *    This is used in clamping prevention for the velocity criterion. 
+   *    This is used in clamping prevention for the velocity criterion.
    * @details This is saved here and not as part of the motions as the motion does not have a notion of a capsule.
    *    I.e., it does not depend on `RobotReach` and therefore does not have access to `RobotReach::CapsuleVelocity`.
    */
@@ -161,8 +159,15 @@ class LongTermTraj {
   /**
    * @brief Construct a new Long Term Traj object.
    */
-  LongTermTraj() : current_pos_(0), starting_index_(0), length_(1), nb_modules_(1), sample_time_(0.01),
-                    v_max_allowed_({1.0}), a_max_allowed_({1.0}), j_max_allowed_({1.0}) {
+  LongTermTraj()
+      : current_pos_(0),
+        starting_index_(0),
+        length_(1),
+        nb_modules_(1),
+        sample_time_(0.01),
+        v_max_allowed_({1.0}),
+        a_max_allowed_({1.0}),
+        j_max_allowed_({1.0}) {
     long_term_traj_.push_back(Motion(1));
     for (int i = 0; i < 2; i++) {
       alpha_i_.push_back(1.0);
@@ -189,6 +194,33 @@ class LongTermTraj {
     setLongTermTrajectory(long_term_traj, sample_time);
     calculateMaxAccJerkWindow(long_term_traj_, sliding_window_k);
     for (int i = 0; i < long_term_traj_[0].getNbModules(); i++) {
+      alpha_i_.push_back(alpha_i_max);
+    }
+  }
+
+  /**
+   * @brief Construct a new Long Term Traj object without computing dynamics.
+   *
+   * @param long_term_traj Vector of motions that make up the LTT.
+   * @param sample_time Sample time of the LTT.
+   * @param starting_index Index of the first motion in the LTT
+   * @param v_max_allowed Maximum allowed joint velocities
+   * @param a_max_allowed Maximum allowed joint accelerations
+   * @param j_max_allowed Maximum allowed joint jerks
+   * @param alpha_i_max Maximum Carthesian acceleration
+   */
+  LongTermTraj(const std::vector<Motion>& long_term_traj, double sample_time, int starting_index,
+               std::vector<double> v_max_allowed, std::vector<double> a_max_allowed, std::vector<double> j_max_allowed,
+               double alpha_i_max)
+      : long_term_traj_(long_term_traj),
+        sample_time_(sample_time),
+        current_pos_(0),
+        starting_index_(starting_index),
+        v_max_allowed_(v_max_allowed),
+        a_max_allowed_(a_max_allowed),
+        j_max_allowed_(j_max_allowed) {
+    setLongTermTrajectory(long_term_traj, sample_time);
+    for (int i = 0; i < long_term_traj_[0].getNbModules(); ++i) {
       alpha_i_.push_back(alpha_i_max);
     }
   }
@@ -280,8 +312,8 @@ class LongTermTraj {
 
   /**
    * @brief Set the maximum allowed joint velocities
-   * 
-   * @param v_max_allowed 
+   *
+   * @param v_max_allowed
    */
   inline void setVMaxAllowed(const std::vector<double>& v_max_allowed) {
     v_max_allowed_ = v_max_allowed;
@@ -289,8 +321,8 @@ class LongTermTraj {
 
   /**
    * @brief Set the maximum allowed joint accelerations
-   * 
-   * @param a_max_allowed 
+   *
+   * @param a_max_allowed
    */
   inline void setAMaxAllowed(const std::vector<double>& a_max_allowed) {
     a_max_allowed_ = a_max_allowed;
@@ -298,8 +330,8 @@ class LongTermTraj {
 
   /**
    * @brief Set the maximum allowed joint jerks
-   * 
-   * @param j_max_allowed 
+   *
+   * @param j_max_allowed
    */
   inline void setJMaxAllowed(const std::vector<double>& j_max_allowed) {
     j_max_allowed_ = j_max_allowed;
@@ -316,8 +348,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the number of modules (joints of the robot).
-   * 
-   * @return int 
+   *
+   * @return int
    */
   inline int getNbModules() const {
     return nb_modules_;
@@ -356,7 +388,7 @@ class LongTermTraj {
 
   /**
    * @brief Get the floor index of the LTT at the given s position.
-   * 
+   *
    * @param s continuous trajectory time
    * @return int LTT index
    */
@@ -366,7 +398,7 @@ class LongTermTraj {
 
   /**
    * @brief Get the ceil index of the LTT at the given s position.
-   * 
+   *
    * @param s continuous trajectory time
    * @return int LTT index
    */
@@ -376,7 +408,7 @@ class LongTermTraj {
 
   /**
    * @brief Get the floating-point remainder of the index given s position and the lower LTT index.
-   * 
+   *
    * @param s continuous trajectory time
    * @return int LTT index difference
    */
@@ -406,8 +438,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the starting index of the LTT
-   * 
-   * @return int 
+   *
+   * @return int
    */
   inline int getStartingIndex() const {
     return starting_index_;
@@ -415,8 +447,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the maximum allowed joint velocities.
-   * 
-   * @return std::vector<double> 
+   *
+   * @return std::vector<double>
    */
   inline std::vector<double> getVMaxAllowed() const {
     return v_max_allowed_;
@@ -424,8 +456,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the maximum allowed joint accelerations.
-   * 
-   * @return std::vector<double> 
+   *
+   * @return std::vector<double>
    */
   inline std::vector<double> getAMaxAllowed() const {
     return a_max_allowed_;
@@ -433,8 +465,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the maximum allowed joint jerks.
-   * 
-   * @return std::vector<double> 
+   *
+   * @return std::vector<double>
    */
   inline std::vector<double> getJMaxAllowed() const {
     return j_max_allowed_;
@@ -452,8 +484,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the Alpha I object
-   * 
-   * @return std::vector<double> 
+   *
+   * @return std::vector<double>
    */
   inline std::vector<double> getAlphaI() const {
     return alpha_i_;
@@ -461,8 +493,8 @@ class LongTermTraj {
 
   /**
    * @brief Get the Beta I object
-   * 
-   * @return std::vector<double> 
+   *
+   * @return std::vector<double>
    */
   inline std::vector<double> getBetaI() const {
     return beta_i_;
@@ -488,6 +520,20 @@ class LongTermTraj {
   }
 
   /**
+   * @brief get trajectory as vector of motions
+   * @return std::vector<Motion> trajectory as vector of motions at each time step
+   */
+  inline std::vector<Motion> getTrajectory() const {
+    return long_term_traj_;
+  }
+
+  /**
+   * @brief get all time points of motions
+   * @return std::vector<double> time points of the trajectory
+   */
+  std::vector<double> getTimePoints() const;
+
+  /**
    * @brief gets the inertia matrices of the robot links in a given time step
    *
    * @param index of motion in LTT
@@ -498,11 +544,21 @@ class LongTermTraj {
   }
 
   /**
+   * @brief gets the inertia matrices of the robot links for whole trajectory at the beginning of intervals
+   * @return std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> inertia matrices of the robot links
+   */
+  inline std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
+  getInertiaMatricesAtBeginningOfIntervals() const {
+    return std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>(inertia_matrices_.begin(),
+                                                                                           inertia_matrices_.end() - 1);
+  }
+
+  /**
    * @brief Gets a const. pointer to a the velocity capsule given by the index
    *
    * @param index of motion in LTT
    */
-  inline std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator getVelocityCapsuleIterator(int index) {
+  inline std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator getVelocityCapsuleIterator(int index) const {
     // TODO: Use unsigned int
     if (index < 0 || index >= capsule_velocities_.size()) {
       throw std::out_of_range("Index out of range");
@@ -522,6 +578,92 @@ class LongTermTraj {
    * @param s look at Motions until trajectory_time s
    */
   double getMaxofMaximumCartesianVelocityWithS(double s) const;
+
+  /**
+   * @brief checks if the inertia matrices are set
+   * @return true if inertia_matrices_ is not empty
+   * @return false if inertia_matrices_ is empty
+   */
+  inline bool isInertiaMatricesSet() const {
+    return !inertia_matrices_.empty();
+  }
+
+  /**
+   * @brief checks if capsule velocities are set
+   * @return true if capsule_velocities_ is not empty
+   * @return false if capsule_velocities_ is empty
+   */
+  inline bool isCapsuleVelocitiesSet() const {
+    return !capsule_velocities_.empty();
+  }
+
+  /**
+   * @brief checks if alpha_i_ is set
+   * @return true if alpha_i_ is not empty
+   * @return false if alpha_i_ is empty
+   */
+  inline bool isAlphaISet() const {
+    return !alpha_i_.empty();
+  }
+
+  /**
+   * @brief checks if beta_i_ is set
+   * @return true if beta_i_ is not empty
+   * @return false if beta_i_ is empty
+   */
+  inline bool isBetaISet() const {
+    return !beta_i_.empty();
+  }
+
+  /**
+   * @brief checks if max acceleration windows are set
+   * @return true if max_acceleration_window_ is not empty
+   * @return false if max_acceleration_window_ is empty
+   */
+  inline bool isMaxAccWindowsSet() const {
+    return !max_acceleration_window_.empty();
+  }
+
+  /**
+   * @brief checks if max jerk windows are set
+   * @return true if max_jerk_window_ is not empty
+   * @return false if max_jerk_window_ is empty
+   */
+  inline bool isMaxJerkWindowsSet() const {
+    return !max_jerk_window_.empty();
+  }
+
+  /**
+   * @brief sets the maximum acceleration and jerk windows of the LTT
+   * @param sliding_window_k size of sliding window for max acc and jerk calculation
+   */
+  inline void computeMaxAccJerkWindows(int sliding_window_k) {
+    calculateMaxAccJerkWindow(long_term_traj_, sliding_window_k);
+  }
+  
+  /**
+   * @brief sets the alpha and beta values of the robot links in each time interval
+   * @throws std::runtime_error if capsule velocities are not set
+   */
+  inline void computeAlphaBeta() {
+    // check if capsule velocities are set
+    if (!isCapsuleVelocitiesSet()) {
+      throw std::runtime_error("Capsule velocities are not set. Cannot calculate alpha and beta.");
+    }
+    alpha_i_.clear();
+    beta_i_.clear();
+    calculateAlphaBeta();
+  }
+
+  /**
+   * @brief sets the inertia matrices and capsule velocities of the robot links in each time interval
+   * @param[in] robot_reach used to calculate jacobians and velocities
+   */
+  inline void computeDynamics(RobotReach& robot_reach) {
+    inertia_matrices_.clear();
+    capsule_velocities_.clear();
+    velocitiesOfAllMotions(robot_reach);
+  }
 };
 }  // namespace safety_shield
 #endif  // LONG_TERM_TRAJ_H

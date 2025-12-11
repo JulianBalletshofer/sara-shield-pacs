@@ -2,5 +2,10 @@ BasedOnStyle: Google
 IndentWidth: 2
 TabWidth: 2
 UseTab: Never
-ColumnLimit: 120
-AllowShortFunctionsOnASingleLine: Empty
+ColumnLimit: 100  # 80 is ideal, 100 is common compromise
+BreakBeforeBraces: Attach  # Matches Google brace placement
+SpacesInParentheses: false
+SpaceAfterCStyleCast: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline

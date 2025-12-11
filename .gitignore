@@ -45,4 +45,3 @@ __pycache__/
 cmake-build-debug/
 cmake-build-debug-coverage/
 cmake-build-release/
-data/
