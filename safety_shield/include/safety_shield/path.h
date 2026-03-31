@@ -15,7 +15,7 @@
  */
 
 #include <stdexcept>
-#include <array>
+#include <vector>
 #include <iostream>
 
 #include "spdlog/spdlog.h"
@@ -49,16 +49,16 @@ class PathVelocityNegativeException : public std::exception {
 class Path {
  private:
   /**
-   * @brief The end times of the three phases of the path
-   * 
+   * @brief The end times of the phases of the path
+   *
    * @details These values are continuously decremented by the sample time
    */
-  std::array<double, 3> times_;
+  std::vector<double> times_;
 
   /**
-   * @brief The jerks of the three phases of the path
+   * @brief The jerks of the phases of the path
    */
-  std::array<double, 3> jerks_;
+  std::vector<double> jerks_;
 
   /**
    * @brief The starting position
@@ -149,6 +149,10 @@ class Path {
    */
   Path();
 
+  Path(const std::vector<double>& times, const std::vector<double>& jerks) {
+    setPhases(times, jerks);
+  }
+
   /**
    * @brief A path destructor
    */
@@ -182,14 +186,14 @@ class Path {
   /**
    * @brief Returns the phases
    */
-  inline std::array<double, 3> getTimes() const {
+  inline std::vector<double> getTimes() const {
     return times_;
   }
 
   /**
    * @brief Returns the jerks
    */
-  inline std::array<double, 3> getJerks() const {
+  inline std::vector<double> getJerks() const {
     return jerks_;
   }
 
@@ -199,8 +203,10 @@ class Path {
    * Format : [phases, is_current, pos, vel, acc]
    */
   inline void printPath() const {
-    std::cout << times_[0] << "," << times_[1] << "," << times_[2] << "," << jerks_[0] << "," << jerks_[1] << ","
-              << jerks_[2] << "," << is_current_ << "," << pos_ << "," << vel_ << "," << acc_ << std::endl;
+    for (std::size_t i = 0; i < times_.size(); i++) {
+      std::cout << times_[i] << "," << jerks_[i] << ",";
+    }
+    std::cout << is_current_ << "," << pos_ << "," << vel_ << "," << acc_ << std::endl;
   }
 
   /**
@@ -279,8 +285,11 @@ class Path {
    * @param times the new end times of the phases
    * @param jerks the new jerks of the phases
    */
-  inline void setPhases(const std::array<double, 3>& times, const std::array<double, 3>& jerks) {
-    for (int i = 0; i < 3; i++) {
+  inline void setPhases(const std::vector<double>& times, const std::vector<double>& jerks) {
+    if (times.size() != jerks.size()) {
+      throw std::invalid_argument("times and jerks must have the same size");
+    }
+    for (std::size_t i = 0; i < times.size(); i++) {
       if (times[i] < 0) {
         throw std::invalid_argument("Time " + std::to_string(i) + " = " + std::to_string(times[i]) + " is smaller than zero");
       }

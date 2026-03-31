@@ -108,11 +108,6 @@ class SafetyShield {
   Path failsafe_path_;
 
   /**
-   * @brief fail-safe path of the repair path
-   */
-  Path failsafe_path_2_;
-
-  /**
    * @brief verified safe path
    */
   Path verified_path_;
@@ -146,6 +141,11 @@ class SafetyShield {
    * @brief Was the last timestep safe
    */
   bool is_safe_;
+
+  /**
+   * @brief Was planSafetyShield() successful?
+   */
+  // bool plan_safety_shield_successful_;
 
   /**
    * @brief Whether or not the monitored path is under the safe velocity the entire time.
@@ -371,7 +371,7 @@ class SafetyShield {
   /**
    * @brief Computes the fail-safe path for PFL mode.
    *
-   * @details Sets the failsafe_path_2_ variable.
+   * @details Depreciated.
    *
    * @param[in] a_max_manoeuvre Maximum path acceleration
    * @param[in] j_max_manoeuvre Maximum path jerk
@@ -379,10 +379,14 @@ class SafetyShield {
    * @return true planning was successful
    * @return false planning failed
    */
-  bool planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvre);
+  // bool planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvre);
 
   /**
-   * @brief Update the verified path to the monitored path if the verification is successful (safe) or increment the existing verified path otherwise.
+   * @brief Update the verified path and trajectory (should be called after the verification).
+   * @details Set the verified path to the monitored path if the verification is successful (safe).
+   * Otherwise, keep the existing verified path.
+   * Set the verified trajectory to the monitored trajectory if the verification was successful.
+   * Then, increment the verified path and trajectory.
    * 
    * @param is_safe Whether or not the verification was successful.
    */
@@ -391,10 +395,9 @@ class SafetyShield {
       if (is_safe) {
         // only override if planning was sucessful and safe
         verified_path_ = monitored_path_;
-      } else {
-        // we need to increment the path
-        verified_path_.increment(sample_time_);
       }
+      // Increment the path
+      verified_path_.increment(sample_time_);
       // Set s to the new path position
       path_s_ = verified_path_.getPosition();
     }
@@ -403,7 +406,7 @@ class SafetyShield {
       verified_trajectory_ = monitored_trajectory_;
       verified_trajectory_index_ = 0;
     }
-    incrementTrajectory(verified_trajectory_index_, verified_trajectory_);
+    incrementTrajectoryIndex(verified_trajectory_index_, verified_trajectory_);
   }
 
   /**
@@ -619,10 +622,10 @@ class SafetyShield {
    * @brief Increments the trajectory index.
    * @details If the index is larger than the size of the trajectory, it is set to the last index.
    */
-  inline void incrementTrajectory(int& trajectory_index_, const std::vector<Motion>& trajectory) {
-    trajectory_index_++;
-    if (trajectory_index_ >= trajectory.size()) {
-      trajectory_index_ = trajectory.size() - 1;
+  inline void incrementTrajectoryIndex(int& trajectory_index, const std::vector<Motion>& trajectory) {
+    trajectory_index++;
+    if (trajectory_index >= trajectory.size()) {
+      trajectory_index = trajectory.size() - 1;
     }
   }
 

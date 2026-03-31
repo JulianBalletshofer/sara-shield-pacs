@@ -39,8 +39,8 @@ class PathTest : public ::testing::Test {
    */
   void SetUp() override {
     path_ = Path();
-    std::array<double, 3> times = {1, 2, 3};
-    std::array<double, 3> jerks = {1, 0, -1};
+    std::vector<double> times = {1, 2, 3};
+    std::vector<double> jerks = {1, 0, -1};
     path_.setPhases(times, jerks);
   }
 };
@@ -61,8 +61,8 @@ class PathStopTest : public ::testing::Test {
   void SetUp() override {
     path_ = Path();
     path_.setVelocity(2.0);
-    std::array<double, 3> times = {1, 2, 3};
-    std::array<double, 3> jerks = {-1, 0, 1};
+    std::vector<double> times = {1, 2, 3};
+    std::vector<double> jerks = {-1, 0, 1};
     path_.setPhases(times, jerks);
   }
 };
