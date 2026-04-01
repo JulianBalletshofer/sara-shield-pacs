@@ -149,7 +149,11 @@ class Path {
    */
   Path();
 
-  Path(const std::vector<double>& times, const std::vector<double>& jerks) {
+  Path(bool current, double pos, double vel, double acc, const std::vector<double>& times, const std::vector<double>& jerks) {
+    setCurrent(current);
+    setPosition(pos);
+    setVelocity(vel);
+    setAcceleration(acc);
     setPhases(times, jerks);
   }
 

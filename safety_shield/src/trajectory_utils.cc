@@ -37,7 +37,7 @@ std::vector<Motion> getMotionsOfAllTimeStepsFromPath(const LongTermTraj& ltt, co
   }
   std::string q0_log;
   for (const auto& m : motion_samples) q0_log += fmt::format("{:.4f} ", m.getAngle()[0]);
-  spdlog::info("getMotionsOfAllTimeStepsFromPath path positions: [{}], q[0]: [{}]", path_pos_log, q0_log);
+  // spdlog::info("getMotionsOfAllTimeStepsFromPath path positions: [{}], q[0]: [{}]", path_pos_log, q0_log);
   return motion_samples;
 }
 

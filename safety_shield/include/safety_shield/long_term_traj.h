@@ -421,13 +421,32 @@ class LongTermTraj {
   /**
    * @brief Get the motion at index from current pos
    *
-   * @param index steps from current pos
+   * @param index index equallying the path_s value
    * @return Motion
    */
   inline Motion getNextMotionAtIndex(int index) const {
     return long_term_traj_[getTrajectoryIndex(index)];
   }
 
+  /**
+   * @brief Get the motion at index from current pos
+   *
+   * @param trajectory_index index equallying the motion vector
+   * @return Motion
+   */
+  inline Motion getNextMotionAtTrajectoryIndex(int trajectory_index) const {
+    return long_term_traj_[trajectory_index];
+  }
+
+  /**
+   * @brief Get the trajectory index.
+   * 
+   * @details The trajectory index matches the list of motions. 
+   * Substract the starting index from the given index and clip it to the current pos.
+   * 
+   * @param index 
+   * @return int 
+   */
   inline int getTrajectoryIndex(int index) const {
     int desired_pos = std::min(index - starting_index_, length_ - 1);
     if (desired_pos < current_pos_) {

@@ -113,10 +113,10 @@ class SafetyShieldSingleJointTest
  protected:
   SafetyShieldExposed* shield_;
 
-  const double sample_time_ = 0.02;
+  const double sample_time_ = 0.002;
   const std::vector<double> v_max_allowed_ = {1.0};
-  const std::vector<double> a_max_allowed_ = {5.0};
-  const std::vector<double> j_max_allowed_ = {100.0};
+  const std::vector<double> a_max_allowed_ = {10.0};
+  const std::vector<double> j_max_allowed_ = {400.0};
 
   void SetUp() override {
     std::filesystem::path config_dir =

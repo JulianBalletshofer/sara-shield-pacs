@@ -400,6 +400,7 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
     intended_path_correct_ =
           planSafetyShield(verified_path_.getPosition(), verified_path_.getVelocity(), verified_path_.getAcceleration(),
                            1, a_max_manoeuvre, j_max_manoeuvre, intended_path_);
+    // spdlog::info("Intended path planning correct = {}.", intended_path_correct_);
     std::vector<double> monitored_path_times = {};
     std::vector<double> monitored_path_jerks = {};
     // Only plan new failsafe trajectory if the intended path planning was successful.
@@ -407,6 +408,7 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
       // Add one time step of the intended path to the new monitored path.
       monitored_path_times.push_back(sample_time_);
       monitored_path_jerks.push_back(intended_path_.getJerk());
+      // spdlog::info("Added intended step with jerk = {}.", intended_path_.getJerk());
       // advance one step on intended path
       intended_path_.increment(sample_time_);
       bool failsafe_planning_success;
@@ -414,6 +416,7 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
           planSafetyShield(intended_path_.getPosition(), intended_path_.getVelocity(), intended_path_.getAcceleration(),
                            0, a_max_manoeuvre, j_max_manoeuvre, failsafe_path_);
       // Check the validity of the planned path
+      // spdlog::info("Failsafe path planning correct = {}.", failsafe_planning_success);
       if (!failsafe_planning_success || intended_path_.getPosition() < failsafe_path_.getPosition()) {
         intended_path_correct_ = false;
       }
@@ -427,10 +430,13 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
         monitored_path_times.push_back(failsafe_times[i] + sample_time_);
         monitored_path_jerks.push_back(failsafe_jerks[i]);
       }
-      monitored_path_ = Path(monitored_path_times, monitored_path_jerks);
+      monitored_path_ = Path(true, verified_path_.getPosition(), verified_path_.getVelocity(), verified_path_.getAcceleration(), 
+                             monitored_path_times, monitored_path_jerks);
+      // spdlog::info("New monitored path");
     } else {
       // If planning failed, use previous verified path
       monitored_path_ = verified_path_;
+      // spdlog::info("Remain on verified path");
     }
 
     //// Calculate start and goal pos of intended motion

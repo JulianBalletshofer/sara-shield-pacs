@@ -395,11 +395,13 @@ class SafetyShield {
       if (is_safe) {
         // only override if planning was sucessful and safe
         verified_path_ = monitored_path_;
+        // spdlog::info("Override verified path with monitored path.");
       }
       // Increment the path
       verified_path_.increment(sample_time_);
       // Set s to the new path position
       path_s_ = verified_path_.getPosition();
+      // spdlog::info("Increment verified path to position {}.", path_s_);
     }
     if (is_safe) {
       // only override if planning was sucessful and safe
