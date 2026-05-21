@@ -34,6 +34,7 @@
 #include "safety_shield/motion.h"
 #include "safety_shield/path.h"
 #include "safety_shield/planning_utils.h"
+#include "safety_shield/planning_utils_ruckig_pro.h"
 #include "safety_shield/robot_reach.h"
 #include "safety_shield/trajectory_utils.h"
 #include "safety_shield/verify.h"
@@ -245,6 +246,16 @@ class SafetyShield {
    * accerlation and jerk values are within the LTT planning bounds.
    */
   bool new_goal_ = false;
+
+  /**
+   * @brief indicates that there is are new waypoints to compute a new LTT.
+   */
+  bool new_waypoints_received_ = false;
+
+  /**
+   * @brief new waypoints to plan a trajectory.
+   */
+  std::vector<std::vector<double>> new_waypoints_;
 
   /**
    * @brief indicates that the new LTT was passed to the safety verification at least once.
@@ -700,11 +711,11 @@ class SafetyShield {
 
   /**
    * @brief Evaluate if replanning a new LTT is necessary and plan one if needed.
-   * @details Should be called in the `step()` function if the new_goal_ flag is set, i.e.,
+   * @details Should be called in the `step()` function if the new_goal_ or new_waypoints_received_ flag is set, i.e.,
    *  the user requested a new goal to move to.
    * For Path Conistent:
    *  This function sets the following internal attributes:
-   *    - new_long_term_trajectory_: The newly calculated LTT
+   *    - new_long_term_trajectory_: The newly calculated LTT to the new goal or from a set of waypoints.
    *    - new_ltt_: Flag that indicates that a new LTT is available
    *    - new_ltt_processed_: Flag that indicates that the new LTT was passed to the safety verification at least once.
    * For Non Path Consistent:
@@ -761,6 +772,14 @@ class SafetyShield {
    * @param goal_velocity Desired joint velocities at the goal position
    */
   void newLongTermTrajectory(const std::vector<double>& goal_position, const std::vector<double>& goal_velocity);
+
+  /**
+   * @brief Sets waypoints.
+   * @details This function is called when a new goal is requested and waypoints are set.
+   * @param waypoints The waypoints to calculate the new long-term trajectory from.
+   * @throws TrajectoryException If the waypoints are not valid.
+   */
+  void newLongTermTrajectoryFromWaypoints(const std::vector<std::vector<double>>&waypoints);
 
   /**
    * @brief Overrides the current long-term trajectory.

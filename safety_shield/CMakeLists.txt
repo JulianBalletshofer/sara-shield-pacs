@@ -108,6 +108,7 @@ add_library(${PROJECT_NAME}
   src/verification_utils.cc
   src/config_utils.cc
   src/planning_utils.cc
+  src/planning_utils_ruckig_pro.cc
 )
 
 # Correctly specifying include directories for the target

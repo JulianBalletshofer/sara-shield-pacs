@@ -163,6 +163,7 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
   }
   new_ltt_ = false;
   new_goal_ = false;
+  new_waypoints_received_ = false;
   new_ltt_processed_ = false;
   intended_path_correct_ = false;
   path_s_ = 0;
@@ -584,23 +585,23 @@ Motion SafetyShield::step(double cycle_begin_time) {
         is_safe_ = false;
       }
     }
-    // Check if there is a new goal motion
-    if (new_goal_) {
+    // Check if there is a new goal motion or new waypoints received
+    if (new_goal_ || new_waypoints_received_) {
       newGoalPlanning(current_motion);
     }
     // compute monitored trajectory
-    if (path_consistent_) {
-      monitored_trajectory_ = stepPathConistent(current_motion);
-    } else {
-      try {
-        monitored_trajectory_ = stepNonPathConistent(current_motion);
-      } catch (const std::exception& e) {
-        spdlog::warn("SafetyShield::step: stepNonPathConistent failed: {}", e.what());
-        is_safe_ = false;
-        spdlog::info("SafetyShield::step: stay on verified trajectory");
-        updateSafePath(is_safe_);
-        return getCurrentMotion();
+    try {
+      if (path_consistent_) {
+        monitored_trajectory_ = stepPathConistent(current_motion);
+      } else {
+      monitored_trajectory_ = stepNonPathConistent(current_motion);
       }
+    } catch (const std::exception& e) {
+      spdlog::warn("SafetyShield::step: monitored trajectory planning failed: {}", e.what());
+      is_safe_ = false;
+      spdlog::info("SafetyShield::step: stay on verified trajectory");
+      updateSafePath(is_safe_);
+      return getCurrentMotion();
     }
     // create time points for sparse vector of motions
     const int N = monitored_trajectory_.size() - 1;
@@ -697,12 +698,13 @@ void SafetyShield::evaluateNewLTTProcessed(Motion& current_motion) {
     long_term_trajectory_ = new_long_term_trajectory_;
     new_ltt_ = false;
     new_goal_ = false;
+    new_waypoints_received_ = false;
   }
 }
 
 void SafetyShield::newGoalPlanning(Motion& current_motion) {
-  if (!new_goal_) {
-    throw std::logic_error("SafetyShield::newGoalPlanning called without new goal.");
+  if (!new_goal_ && !new_waypoints_received_) {
+    throw std::logic_error("SafetyShield::newGoalPlanning called without new goal or waypoints.");
   }
   // Check if current motion has acceleration and jerk values that lie in the plannable ranges
   if (!checkCurrentMotionForReplanning(current_motion)) {
@@ -715,8 +717,26 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     // Only replan if the current joint position is different from the last.
     bool new_ltt_calculated = false;
     if (!last_close) {
-      new_ltt_calculated = calculateLongTermTrajectory(current_motion, new_goal_motion_,
-                                                       new_long_term_trajectory_);
+      if (new_goal_) {
+        new_ltt_calculated = calculateLongTermTrajectory(current_motion, new_goal_motion_,
+                                                        new_long_term_trajectory_);
+      } else {
+        // Compute trajectory from waypoint
+        try {
+          std::vector<Motion> new_traj = trajectoryPlanningFromWaypoints(current_motion, new_waypoints_, v_max_allowed_, a_max_ltt_,
+                                                                        j_max_ltt_, sample_time_, path_s_
+          );
+          new_ltt_calculated = !new_traj.empty();
+          if (new_ltt_calculated) {
+            new_long_term_trajectory_ = LongTermTraj(new_traj, sample_time_, path_s_discrete_, v_max_allowed_,
+                                                    a_max_allowed_, j_max_allowed_, sliding_window_k_, alpha_i_max_);
+          }
+
+        } catch (const std::exception& e) {
+            spdlog::warn("SafetyShield::newLongTermTrajectory: Trajectory planning failed with exception: {}", e.what());
+            new_ltt_calculated = false;  // Make sure flag is safe
+        }
+      }
     }
     // A replanning happend, so set the last replan position to the current position
     if (!last_close && new_ltt_calculated) {
@@ -731,6 +751,9 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
       new_ltt_ = false;
     }
   } else {
+    if (!new_goal_ && !new_waypoints_received_) {
+      throw std::logic_error("SafetyShield::newGoalPlanning: waypoint calculation only for path-consistent braking.");
+    }
     std::vector<Motion> intended_trajectory = goalPlanningRuckig(current_motion, new_goal_motion_);
     if (intended_trajectory.size() > 1) {
       intended_trajectory_ = intended_trajectory;  // Only assign if valid
@@ -742,6 +765,7 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     }
   }
 }
+
 bool SafetyShield::verifyContactEnergySafetyByContactType(const LongTermTraj& sparse_trajectory,
                                                           std::vector<double> time_points,
                                                           int& collision_index) {
@@ -813,6 +837,31 @@ void SafetyShield::newLongTermTrajectory(const std::vector<double>& goal_positio
   } catch (const std::exception& exc) {
     spdlog::error("Exception in SafetyShield::newLongTermTrajectory: {}", exc.what());
   }
+}
+
+void SafetyShield::newLongTermTrajectoryFromWaypoints(const std::vector<std::vector<double>>&waypoints) {
+  new_waypoints_.clear();
+  // check waypoints size
+  if (waypoints.empty()) {
+    throw TrajectoryException("No waypoints given for newLongTermTrajectoryFromWaypoints.");
+  }
+  for (int i = 0; i < waypoints.size(); i++){
+    if (waypoints[i].size() != nb_joints_) {
+      throw TrajectoryException("Waypoint size does not match number of joints.");
+    }
+  }
+  // apply position limits to waypoints
+  for (int i = 0; i < waypoints.size(); i++) {
+    std::vector<double> clamped_wp;
+    for (int j = 0; j < nb_joints_; j++) {
+      clamped_wp.push_back(std::clamp(waypoints[i][j], q_min_allowed_[j] + planning_qpos_tolerance_,
+                                     q_max_allowed_[j] - planning_qpos_tolerance_));
+    }
+    new_waypoints_.push_back(clamped_wp);
+  }
+  new_waypoints_received_ = true;
+  new_ltt_ = false;
+  new_ltt_processed_ = false;
 }
 
 void SafetyShield::setLongTermTrajectory(LongTermTraj& traj) {
