@@ -53,10 +53,6 @@ SafetyShield::SafetyShield(int nb_joints, double sample_time, double max_s_stop,
   Motion goal_motion = computesPotentialTrajectory(is_safe_, prev_dq);
   updateSafePath(is_safe_);
   next_motion_ = getCurrentMotion();
-  std::vector<double> q_min(nb_joints, -3.141);
-  std::vector<double> q_max(nb_joints, -3.141);
-  ltp_ = long_term_planner::LongTermPlanner(nb_joints, sample_time, q_min, q_max, v_max_allowed,
-                                            a_max_path, j_max_path);
   reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
   buildMaxContactEnergies();
   spdlog::info("Safety shield created.");
@@ -89,9 +85,6 @@ SafetyShield::SafetyShield(double sample_time, std::string trajectory_config_fil
                         velocity_method_int, reachability_set_interval_size_);
     reachability_set_duration_ = reachability_set_interval_size_ * sample_time_;
     sliding_window_k_ = (int)std::floor(max_s_stop_ / sample_time_);
-    // Initialize long term planner (ToDo maybe replace with ruckig)
-    ltp_ = long_term_planner::LongTermPlanner(nb_joints_, sample_time, q_min_allowed_, q_max_allowed_, v_max_allowed_,
-                                              a_max_ltt_, j_max_ltt_);
     RobotReach::VelocityMethod velocity_method = static_cast<RobotReach::VelocityMethod>(velocity_method_int);
     robot_reach_->setVelocityMethod(velocity_method);
     //////////// Build human reach
@@ -722,8 +715,7 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     // Only replan if the current joint position is different from the last.
     bool new_ltt_calculated = false;
     if (!last_close) {
-      new_ltt_calculated = calculateLongTermTrajectory(current_motion.getAngle(), current_motion.getVelocity(),
-                                                       current_motion.getAcceleration(), new_goal_motion_.getAngle(),
+      new_ltt_calculated = calculateLongTermTrajectory(current_motion, new_goal_motion_,
                                                        new_long_term_trajectory_);
     }
     // A replanning happend, so set the last replan position to the current position
@@ -908,34 +900,17 @@ void SafetyShield::setLongTermTrajectory(LongTermTraj& traj) {
   new_ltt_processed_ = true;
 }
 
-bool SafetyShield::calculateLongTermTrajectory(const std::vector<double>& start_q, const std::vector<double> start_dq,
-                                               const std::vector<double> start_ddq, const std::vector<double>& goal_q,
+bool SafetyShield::calculateLongTermTrajectory(const Motion& start_motion, const Motion& goal_motion,
                                                LongTermTraj& ltt) {
-  long_term_planner::Trajectory trajectory;
-  bool success = ltp_.planTrajectory(goal_q, start_q, start_dq, start_ddq, trajectory);
-  if (!success) return false;
-  std::vector<Motion> new_traj(trajectory.length + 1);
   double new_time = path_s_;
-  new_traj[0] = Motion(new_time, start_q, start_dq, start_ddq, 0.0);
-  new_time += sample_time_;
-  std::vector<double> q(nb_joints_);
-  std::vector<double> dq(nb_joints_);
-  std::vector<double> ddq(nb_joints_);
-  std::vector<double> dddq(nb_joints_);
-  for (int i = 0; i < trajectory.length; i++) {
-    for (int j = 0; j < nb_joints_; j++) {
-      q[j] = trajectory.q[j][i];
-      dq[j] = trajectory.v[j][i];
-      ddq[j] = trajectory.a[j][i];
-      dddq[j] = trajectory.j[j][i];
-    }
-    new_traj[i + 1] = Motion(new_time, q, dq, ddq, dddq);
-    new_time += sample_time_;
+  std::vector<Motion> new_traj = computeGoalTrajectory(start_motion, goal_motion, v_max_allowed_, 
+                                                        a_max_ltt_, j_max_ltt_, sample_time_, path_s_);
+  if (new_traj.empty()) {
+    spdlog::error("calculateLongTermTrajectory: computeGoalTrajectory returned empty trajectory");
+    return false;
   }
-
   ltt = LongTermTraj(new_traj, sample_time_, path_s_discrete_, v_max_allowed_, a_max_allowed_, j_max_allowed_,
                      alpha_i_max_);
-
   return true;
 }
 
