@@ -90,13 +90,6 @@ class SafetyShield {
   VerifyISO* verify_;
 
   /**
-   * @brief The visualization of reachable sets
-   *
-   * TODO: Write a visualization for mujoco
-   */
-  // RvizMarker* rviz_;
-
-  /**
    * @brief path to go back to the long term plan
    */
   Path intended_path_;
