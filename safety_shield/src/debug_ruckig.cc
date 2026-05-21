@@ -100,18 +100,6 @@ for (int i = 0; i < 500; i++) {
     safety_shield::Motion next_motion = shield->step(t);
     auto t_end_step = std::chrono::high_resolution_clock::now();
     auto step_duration = std::chrono::duration<double, std::milli>(t_end_step - t_start_step).count();
-    // spdlog::info(
-    //     "Path: Current motion (before step): Angles: [{}] | Velocities: [{}] | Accelerations: [{}]",
-    //     fmt::join(current_motion.getAngle(), ", "),
-    //     fmt::join(current_motion.getVelocity(), ", "),
-    //     fmt::join(current_motion.getAcceleration(), ", ")
-    // );
-    // spdlog::info(
-    //     "Path: Next motion (after step):    Angles: [{}] | Velocities: [{}] | Accelerations: [{}]",
-    //     fmt::join(next_motion.getAngle(), ", "),
-    //     fmt::join(next_motion.getVelocity(), ", "),
-    //     fmt::join(next_motion.getAcceleration(), ", ")
-    // );
 
     // non path conistent shield
     safety_shield::Motion current_motion_non_path = shieldNonPathConsistent->getCurrentMotion();
@@ -120,18 +108,6 @@ for (int i = 0; i < 500; i++) {
     auto t_end_planning = std::chrono::high_resolution_clock::now();
     auto planning_duration = std::chrono::duration<double, std::milli>(t_end_planning - t_start_planning).count();
     bool safe = shieldNonPathConsistent->getSafety();
-    spdlog::info(
-        "Non-Path: Current motion (before step): Angles: [{}] | Velocities: [{}] | Accelerations: [{}]",
-        fmt::join(current_motion_non_path.getAngle(), ", "),
-        fmt::join(current_motion_non_path.getVelocity(), ", "),
-        fmt::join(current_motion_non_path.getAcceleration(), ", ")
-    );
-    spdlog::info(
-        "Non-Path: Next motion (after step):    Angles: [{}] | Velocities: [{}] | Accelerations: [{}]",
-        fmt::join(next_motion_non_path.getAngle(), ", "),
-        fmt::join(next_motion_non_path.getVelocity(), ", "),
-        fmt::join(next_motion_non_path.getAcceleration(), ", ")
-    );
     spdlog::info("Step duration path conistent: {:.3f} ms | step duration non path conistent: {:.3f} ms", step_duration, planning_duration);
     
 }

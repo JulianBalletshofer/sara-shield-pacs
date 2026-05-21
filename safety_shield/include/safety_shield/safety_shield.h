@@ -312,7 +312,6 @@ class SafetyShield {
   std::vector<std::vector<std::vector<double>>> max_contact_energies_constrained_;
 
   //////// For replanning new trajectory //////
-
   /**
    * @brief Axis-aligned bounding boxes of the environment elements.
    */
