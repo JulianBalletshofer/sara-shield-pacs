@@ -177,7 +177,6 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
   cycle_begin_time_ = current_time;
   intended_path_ = Path();
   failsafe_path_ = Path();
-  failsafe_path_2_ = Path();
   verified_path_ = Path();
 
   // initialize goal with the current state
@@ -209,6 +208,7 @@ void SafetyShield::reset(double init_x, double init_y, double init_z, double ini
 bool SafetyShield::planSafetyShield(double pos, double vel, double acc, double ve, double a_max, double j_max,
                                     Path& path) {
   if (a_max < 0 || fabs(acc) > a_max) {
+    // spdlog::info("Planning unsuccessful due to a_max = {} < 0 || fabs({}) > {}", a_max, fabs(acc), a_max);
     return false;
   }
   try {
@@ -220,8 +220,8 @@ bool SafetyShield::planSafetyShield(double pos, double vel, double acc, double v
 
     // If current velocity is close to goal and acceleration is approx zero -> Do nothing
     if (fabs(vel - ve) < epsilon && fabs(acc) < epsilon) {
-      std::array<double, 3> new_times = {sample_time_, sample_time_, sample_time_};
-      std::array<double, 3> new_jerks = {0.0, 0.0, 0.0};
+      std::vector<double> new_times = {sample_time_, sample_time_, sample_time_};
+      std::vector<double> new_jerks = {0.0, 0.0, 0.0};
       path.setPhases(new_times, new_jerks);
       return true;
     }
@@ -235,8 +235,8 @@ bool SafetyShield::planSafetyShield(double pos, double vel, double acc, double v
 
     // If the velocity at zero acceleration is the goal velocity, use t_to_a_0 and max jerk and return
     if (fabs(v_at_a_0 - ve) < epsilon) {
-      std::array<double, 3> new_times = {t_to_a_0, t_to_a_0, t_to_a_0};
-      std::array<double, 3> new_jerks = {-acc / t_to_a_0, 0, 0};
+      std::vector<double> new_times = {t_to_a_0, t_to_a_0, t_to_a_0};
+      std::vector<double> new_jerks = {-acc / t_to_a_0, 0, 0};
       path.setPhases(new_times, new_jerks);
       return true;
     }
@@ -339,11 +339,11 @@ bool SafetyShield::planSafetyShield(double pos, double vel, double acc, double v
       j23 = 0;
     }
     if (t01 < 0 || t12 < 0 || t23 < 0) {
-      spdlog::debug("planSafetyShield calculated time negative. t01 = {}, t12 = {}, t23 = {}", t01, t12, t23);
+      // spdlog::info("planSafetyShield calculated time negative. t01 = {}, t12 = {}, t23 = {}", t01, t12, t23);
       return false;
     }
-    std::array<double, 3> new_times = {t01, t01 + t12, t01 + t12 + t23};
-    std::array<double, 3> new_jerks = {j01, j12, j23};
+    std::vector<double> new_times = {t01, t01 + t12, t01 + t12 + t23};
+    std::vector<double> new_jerks = {j01, j12, j23};
     path.setPhases(new_times, new_jerks);
     return true;
   } catch (const std::exception& exc) {
@@ -386,18 +386,6 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
       }
       path_s_discrete_++;
     }
-    // If verified safe, take the intended path, otherwise, take the failsafe path
-    if (v && intended_path_correct_) {
-      intended_path_.setCurrent(true);
-      // discard old FailsafePath and replace with new one
-      failsafe_path_ = failsafe_path_2_;
-      // repair path already incremented
-    } else {
-      failsafe_path_.setCurrent(true);
-      // discard RepairPath
-      intended_path_.setCurrent(false);
-      failsafe_path_.increment(sample_time_);
-    }
 
     // find maximum acceleration and jerk authorised
     double a_max_manoeuvre, j_max_manoeuvre;
@@ -409,33 +397,46 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
       calculateMaxAccJerk(prev_speed, a_max_ltt_, j_max_ltt_, a_max_manoeuvre, j_max_manoeuvre);
     }
 
-    // Desired movement, one timestep
-    //  if not already on the repair path, plan a repair path
-    if (!intended_path_.isCurrent()) {
-      // plan repair path and replace
-      intended_path_correct_ =
-          planSafetyShield(failsafe_path_.getPosition(), failsafe_path_.getVelocity(), failsafe_path_.getAcceleration(),
+    intended_path_correct_ =
+          planSafetyShield(verified_path_.getPosition(), verified_path_.getVelocity(), verified_path_.getAcceleration(),
                            1, a_max_manoeuvre, j_max_manoeuvre, intended_path_);
-    }
+    // spdlog::info("Intended path planning correct = {}.", intended_path_correct_);
+    std::vector<double> monitored_path_times = {};
+    std::vector<double> monitored_path_jerks = {};
     // Only plan new failsafe trajectory if the intended path planning was successful.
     if (intended_path_correct_) {
-      // advance one step on repair path
+      // Add one time step of the intended path to the new monitored path.
+      monitored_path_times.push_back(sample_time_);
+      monitored_path_jerks.push_back(intended_path_.getJerk());
+      // spdlog::info("Added intended step with jerk = {}.", intended_path_.getJerk());
+      // advance one step on intended path
       intended_path_.increment(sample_time_);
-      bool failsafe_2_planning_success;
-      failsafe_2_planning_success =
+      bool failsafe_planning_success;
+      failsafe_planning_success =
           planSafetyShield(intended_path_.getPosition(), intended_path_.getVelocity(), intended_path_.getAcceleration(),
-                           0, a_max_manoeuvre, j_max_manoeuvre, failsafe_path_2_);
+                           0, a_max_manoeuvre, j_max_manoeuvre, failsafe_path_);
       // Check the validity of the planned path
-      if (!failsafe_2_planning_success || intended_path_.getPosition() < failsafe_path_.getPosition()) {
+      // spdlog::info("Failsafe path planning correct = {}.", failsafe_planning_success);
+      if (!failsafe_planning_success || intended_path_.getPosition() < failsafe_path_.getPosition()) {
         intended_path_correct_ = false;
       }
     }
     // If all planning was correct, use new failsafe path with single intended step
     if (intended_path_correct_) {
-      monitored_path_ = failsafe_path_2_;
+      // Combine the first time step of the intended path with the failsafe path!
+      std::vector<double> failsafe_times = failsafe_path_.getTimes();
+      std::vector<double> failsafe_jerks = failsafe_path_.getJerks();
+      for (std::size_t i = 0; i < failsafe_times.size(); i++) {
+        monitored_path_times.push_back(failsafe_times[i] + sample_time_);
+        monitored_path_jerks.push_back(failsafe_jerks[i]);
+      }
+      monitored_path_ = Path(true, verified_path_.getPosition(), verified_path_.getVelocity(), verified_path_.getAcceleration(), 
+                             monitored_path_times, monitored_path_jerks);
+      // spdlog::info("New monitored path");
     } else {
-      // If planning failed, use previous failsafe path
-      monitored_path_ = failsafe_path_;
+      // If planning failed, use previous verified path
+      monitored_path_ = verified_path_;
+      // spdlog::info("Remain on verified path");
     }
 
     //// Calculate start and goal pos of intended motion
@@ -449,7 +450,8 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
     } else {
       goal_motion = long_term_trajectory_.interpolate(s_d, ds_d, dds_d, ddds_d);
     }
-    goal_motion.setTime(monitored_path_.getTime(2));
+    std::vector<double> monitored_times = monitored_path_.getTimes();
+    goal_motion.setTime(monitored_times[monitored_times.size()-1]);
     return goal_motion;
   } catch (const std::exception& exc) {
     spdlog::error("Exception in SafetyShield::computesPotentialTrajectory: {}", exc.what());
@@ -458,6 +460,7 @@ Motion SafetyShield::computesPotentialTrajectory(bool v, const std::vector<doubl
   }
 }
 
+/*
 bool SafetyShield::planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvre) {
   // Calculate maximal Carthesian velocity in the short-term plan
   double s_d, ds_d, dds_d;
@@ -508,6 +511,7 @@ bool SafetyShield::planPFLFailsafe(double a_max_manoeuvre, double j_max_manoeuvr
   }
   return planning_success;
 }
+*/
 
 bool SafetyShield::checkMotionForJointLimits(Motion& motion) {
   for (int i = 0; i < nb_joints_; i++) {
@@ -640,7 +644,7 @@ std::vector<Motion> SafetyShield::stepNonPathConistent(const Motion& current_mot
     }
   }
   // Get next intended motion
-  incrementTrajectory(intended_trajectory_index_, intended_trajectory_);
+  incrementTrajectoryIndex(intended_trajectory_index_, intended_trajectory_);
   Motion motion_after_intended_step = intended_trajectory_[intended_trajectory_index_];
   // Compute monitored trajectory (intended + failsafe)
   std::vector<Motion> monitored_trajectory = computeMonitoredTrajectory(current_motion, motion_after_intended_step);
@@ -649,7 +653,7 @@ std::vector<Motion> SafetyShield::stepNonPathConistent(const Motion& current_mot
 
 std::vector<Motion> SafetyShield::stepPathConistent(const Motion& current_motion) {
   // Compute monitored trajectory
-  Motion goal_motion = computesPotentialTrajectory(is_safe_, next_motion_.getVelocity());
+  Motion goal_motion = computesPotentialTrajectory(is_safe_, current_motion.getVelocity());
   // we have to start from time 0 as 1. in interpolation time will be set to 0 and 2. the time of
   // goal motion equals to the time of full braking but not relative to current time - it is
   // relative to 0

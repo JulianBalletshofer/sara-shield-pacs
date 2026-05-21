@@ -7,10 +7,8 @@
 namespace safety_shield {
 
 Path::Path() : pos_(0.0), vel_(0.0), acc_(0.0), jerk_(0.0), is_current_(false) {
-  for (int i = 0; i < 3; i++) {
-    times_[i] = 0;
-    jerks_[i] = 0;
-  }
+  times_ = {0.0, 0.0, 0.0};
+  jerks_ = {0.0, 0.0, 0.0};
 }
 
 void Path::incrementMotion(double& pos, double& vel, double& acc, const double& jerk, const double& duration) {
@@ -33,9 +31,10 @@ void Path::increment(double duration) {
     throw(std::invalid_argument("Path::increment duration: " + std::to_string(duration) + " < 0!"));
   }
   double dt;
-  for (int i = 0; i < 4; i++) {
-    if (i == 3) {
-      // If we exceeded the last phase, we increment the path with the remaining duration and set the jerk  and acceleration to zero
+  int n = static_cast<int>(times_.size());
+  for (int i = 0; i <= n; i++) {
+    if (i == n) {
+      // If we exceeded the last phase, we increment the path with the remaining duration and set the jerk and acceleration to zero
       jerk_ = 0.0;
       acc_ = 0.0;
       dt = duration;
@@ -46,10 +45,10 @@ void Path::increment(double duration) {
       jerk_ = jerks_[i];
       dt = std::min(times_[i], duration);
     }
-    incrementMotion(pos_, vel_, acc_, jerk_, dt);  
+    incrementMotion(pos_, vel_, acc_, jerk_, dt);
     // Decrease the time of all phases by dt
     duration -= dt;
-    for (int j = i; j < 3; j++) {
+    for (int j = i; j < n; j++) {
       times_[j] = std::max(times_[j] - dt, 0.0);
     }
     if (duration <= 0.0) {
@@ -63,7 +62,7 @@ void Path::getFinalMotion(double& final_pos, double& final_vel, double& final_ac
   final_vel = getVelocity();
   final_acc = getAcceleration();
   double l_time = 0;
-  for (int i = 0; i < 3; i++) {
+  for (std::size_t i = 0; i < times_.size(); i++) {
     if (times_[i] <= 0.0) {
       continue;
     }
@@ -88,7 +87,7 @@ void Path::getMotionUnderVel(double v_limit, double& time, double& pos, double& 
   double prev_vel, next_vel = getVelocity();
   double prev_acc, next_acc = getAcceleration();
   double l_time = 0;
-  for (int i = 0; i < 3; i++) {
+  for (std::size_t i = 0; i < times_.size(); i++) {
     if (times_[i] <= 0.0) {
       continue;
     }
@@ -129,7 +128,7 @@ double Path::getMaxVelocity() {
   double pos = getPosition();
   double vel = getVelocity();
   double acc = getAcceleration();
-  for (int i = 0; i < 3; i++) {
+  for (std::size_t i = 0; i < times_.size(); i++) {
     if (times_[i] <= 0.0) {
       continue;
     }
