@@ -883,15 +883,6 @@ std::vector<Motion> SafetyShield::getMotionsFromCurrentLTTandPath(const std::vec
   return getMotionsOfAllTimeStepsFromPath(ltt, monitored_path_, time_points);
 }
 
-std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
-SafetyShield::getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>& time_points) {
-  LongTermTraj& ltt = long_term_trajectory_;
-  if (new_ltt_) {
-    ltt = new_long_term_trajectory_;
-  }
-  return getInertiaMatricesOfAllTimeStepsFromPath(ltt, monitored_path_, time_points);
-}
-
 LongTermTraj SafetyShield::buildTrajectory(const std::vector<Motion>& interval_edges_motion,
                                            bool compute_dynamics) {
   LongTermTraj trajectory;
