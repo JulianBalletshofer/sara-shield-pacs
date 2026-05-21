@@ -703,20 +703,6 @@ TEST_F(RobotReachSchunkTest, MaxReflectedMassTest) {
   EXPECT_TRUE(max_reflected_masses[max_reflected_masses.size()-1] < sum_of_link_masses);
 }
 
-TEST_F(RobotReachSchunkTest, CalculateRobotLinkReflectedMassesPerTimeIntervalTest) {
-  std::vector<double> q = {0.2, 0.4, -0.32, 0.86, 0.926, 1.3};  // Some value that is no singularity
-  std::vector<double> dq = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  Motion m(0.0, q, dq, 0.0);
-  std::vector<Motion> motion_vec = {m};
-  std::vector<std::vector<double>> reflected_masses = robot_reach_->calculateRobotLinkReflectedMassesPerTimeInterval(motion_vec);
-  EXPECT_EQ(reflected_masses.size(), 1);
-  EXPECT_EQ(reflected_masses[0].size(), 6);
-  for (int i = 0; i < 6; i++) {
-    EXPECT_TRUE(reflected_masses[0][i] >= 0);
-    // TODO: Test the actual functionality!
-  }
-}
-
 /*
 TEST_F(RobotReachPandaTest, MaxReflectedMassTest) {
   std::vector<double> q = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};

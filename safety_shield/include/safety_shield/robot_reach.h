@@ -275,6 +275,8 @@ class RobotReach {
    * @details calls calculateAllTransformationMatricesAndCapsules() before
    * @param motion configuration of robot
    * @return maximum cartesian velocity of motion
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   double maxVelocityOfMotion(const Motion& motion);
 
@@ -319,6 +321,8 @@ class RobotReach {
    * @assumption calculateAllTransformationMatricesAndCapsules() was called before
    * @param[in] q_dot Joint velocities
    * @return std::vector<CapsuleVelocity> Vector of velocities in SE3 of both points of a capsule
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   std::vector<CapsuleVelocity> calculateAllCapsuleVelocities(const std::vector<double> q_dot) const;
 
@@ -347,6 +351,8 @@ class RobotReach {
    * @brief Calculate all inverse translational mass matrices for a specific robot configuration.
    * @assumption calculateAllTransformationMatricesAndCapsules() was called before
    * @return std::vector<Eigen::Matrix<double, 3, 3>> The inverse translational mass matrices of the links.
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   std::vector<Eigen::Matrix<double, 3, 3>> calculateAllInvMassMatrices() const;
 
@@ -363,6 +369,8 @@ class RobotReach {
    * @brief Calculate all maximum reflected masses for a specific robot configuration.
    * @assumption calculateAllTransformationMatricesAndCapsules() was called before
    * @return std::vector<double> Maximum reflected masses of the links.
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   std::vector<double> calculateAllMaxReflectedMasses() const;
 
@@ -371,6 +379,8 @@ class RobotReach {
    * @assumption calculateAllTransformationMatricesAndCapsules() was called before
    * @param dq robot joint velocities
    * @return double robot kinetic energy at the end effector
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   double calculateEEFKineticEnergy(Eigen::Vector<double, Eigen::Dynamic> dq) const;
 
@@ -452,6 +462,8 @@ class RobotReach {
    * @param capsule which capsule
    * @param q_dot velocity configuration of robot
    * @return maximum cartesian velocity of capsule
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   double calculateMaxVelocityOfCapsule(const int capsule, std::vector<double> q_dot) const;
 
@@ -489,28 +501,10 @@ class RobotReach {
    * @param v linear velocity at joint
    * @param omega angular velocity at joint
    * @return approximate maximum cartesian velocity of capsule
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   double exactVelOfCapsule(const int capsule, const Eigen::Vector3d& v, const Eigen::Vector3d& omega) const;
-
-  /**
-   * @brief Calculate the reflected masses of the robot links for each time interval.
-   * 
-   * @param robot_motions motions of the time intervals
-   * @return std::vector<std::vector<double>> reflected masses of the robot links for each time interval
-   */
-  std::vector<std::vector<double>> calculateRobotLinkReflectedMassesPerTimeInterval(
-    const std::vector<Motion>& robot_motions
-  ) const;
-
-   /**
-   * @brief Calculate the reflected masses of the robot links
-   * 
-   * @param robot_motions motion of the robot
-   * @return std::vector<double> reflected masses of the robot links
-   */
-  std::vector<double> calculateRobotLinkReflectedMasses(
-    const Motion& robot_motion
-  ) const;
 
   /**
    * @brief computes cross product as skew-symmetric matrix

@@ -87,6 +87,8 @@ class VerifyISO : public Verify {
    *
    * @returns True: if the robot capsules do not collide with one set of the human capsules in each time step, i.e., the motion is safe.
    *          False: Otherwise
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   bool verifyHumanReachEnergyReflectedMasses(const std::vector<std::vector<reach_lib::Capsule>>& robot_reachable_sets,
                                    const std::vector<std::vector<std::vector<reach_lib::Capsule>>>& human_reachable_sets,
@@ -110,6 +112,8 @@ class VerifyISO : public Verify {
    *
    * @returns True: if the robot capsules do not collide with one set of the human capsules in each time step, i.e., the motion is safe.
    *          False: Otherwise
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   bool verifyHumanReachEnergyInertiaMatrices(const std::vector<std::vector<reach_lib::Capsule>>& robot_reachable_sets,
                               const std::vector<std::vector<std::vector<reach_lib::Capsule>>>& human_reachable_sets,
@@ -168,6 +172,8 @@ class VerifyISO : public Verify {
    *
    * @returns True: if the robot capsules do not collide with one set of the human capsules in each time step, i.e., the motion is safe.
    *          False: Otherwise
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   bool verifyHumanReachEnergy(const std::vector<std::vector<reach_lib::Capsule>>& robot_reachable_sets,
                                    const std::vector<std::vector<std::vector<reach_lib::Capsule>>>& human_reachable_sets,
@@ -186,6 +192,8 @@ class VerifyISO : public Verify {
    *
    * @returns True: if the robot capsules do not collide with one set of the human capsules in each time step, i.e., the motion is safe.
    *          False: Otherwise
+   *
+   * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
    */
   bool verifyHumanReachVelocity(const std::vector<std::vector<reach_lib::Capsule>>& robot_reachable_sets,
                                    const std::vector<std::vector<std::vector<reach_lib::Capsule>>>& human_reachable_sets,

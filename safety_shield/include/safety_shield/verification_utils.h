@@ -72,6 +72,8 @@ std::vector<int> findHumanRobotContact(const reach_lib::Capsule& human_capsule,
  * @param robot_capsules List of robot capsules.
  * @returns Map that maps a list of robot link indices to the human capsule they are in contact with.
  *        The key is the human capsule index and the value is a list of robot link indices.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 std::map<int, std::vector<int>> findAllHumanRobotContacts(const std::vector<reach_lib::Capsule>& human_capsule,
     const std::vector<reach_lib::Capsule>& robot_capsules);
@@ -261,6 +263,9 @@ void separateConstrainedCollisions(
   std::vector<std::pair<int, int>>& constrained_collisions
 );
 
+/**
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
+ */
 std::vector<double> calculateRobotLinkEnergies(
   const std::vector<double>& robot_link_velocities,
   const std::vector<double>& robot_link_reflected_masses
@@ -275,6 +280,8 @@ std::vector<double> calculateRobotLinkEnergies(
  * @param maximal_contact_energies Maximal admissible human velocities.
  * @return true All robot links are slower than the maximal contact velocity.
  * @return false Otherwise.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 bool checkContactEnergySafety(
   const std::map<int, std::vector<int>>& human_robot_contacts,
@@ -308,6 +315,8 @@ bool checkContactEnergySafetyIndividualLinks(
  * @param maximal_contact_velocities Maximal admissible human velocities.
  * @return true All robot links are slower than the maximal contact velocity.
  * @return false Otherwise.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 bool checkVelocitySafety(
   const std::map<int, std::vector<int>>& human_robot_contacts,
@@ -333,6 +342,8 @@ std::vector<std::vector<double>> calculateMaxRobotLinkVelocitiesPerTimeInterval(
  * @param robot_link_velocities The maximal velocity of each robot link in each time interval.
  * @param robot_link_reflected_masses The maximal reflected masses of each robot link in each time interval.
  * @return std::vector<std::vector<double>> Maximal energy of each robot link for each time interval.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 std::vector<std::vector<double>> calculateMaxRobotEnergiesFromReflectedMasses(
   const std::vector<std::vector<double>>& robot_link_velocities,
