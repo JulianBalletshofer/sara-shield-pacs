@@ -78,34 +78,6 @@ void buildContactMaps(const std::vector<reach_lib::Capsule>& robot_capsules,
   }
 }
 
-void combineContactMaps(const std::vector<reach_lib::Capsule>& human_capsules,
-      const std::vector<double>& human_radii,
-      const std::unordered_map<int, std::set<int>>& unclampable_body_part_map,
-      std::unordered_map<int, std::unordered_set<int>>& robot_collision_map,
-      std::unordered_map<int, std::unordered_set<int>>& environment_collision_map,
-      std::vector<double>& combined_human_radii) {
-  // Find human capsules in contact and merge them together
-  std::vector<std::unordered_set<int>> human_contact_graphs = buildHumanContactGraphs(human_capsules, unclampable_body_part_map);
-  // Combine the radii, robot collisions, and environment collisions of the human capsules in contact
-  std::unordered_map<int, std::unordered_set<int>> combined_robot_collision_map;
-  std::unordered_map<int, std::unordered_set<int>> combined_environment_collision_map;
-  combined_human_radii.resize(human_contact_graphs.size());
-  for (int i = 0; i < human_contact_graphs.size(); i++) {
-    combined_human_radii[i] = 0;
-    for (const auto& idx : human_contact_graphs[i]) {
-      combined_human_radii[i] += human_radii[idx];
-      combined_robot_collision_map[i].insert(
-        robot_collision_map[idx].begin(),
-        robot_collision_map[idx].end());
-      combined_environment_collision_map[i].insert(
-        environment_collision_map[idx].begin(),
-        environment_collision_map[idx].end());
-    }
-  }
-  robot_collision_map = combined_robot_collision_map;
-  environment_collision_map = combined_environment_collision_map;
-}
-
 void buildHumanContactGraph(
       int current,
       const std::vector<reach_lib::Capsule>& human_capsules,
@@ -136,30 +108,6 @@ void buildHumanContactGraph(
       buildHumanContactGraph(i, human_capsules, unclampable_body_part_map, visited_body_parts, human_contact_graph);
     }
   }
-}
-
-std::vector<std::unordered_set<int>> buildHumanContactGraphs(
-  const std::vector<reach_lib::Capsule>& human_capsules,
-  const std::unordered_map<int, std::set<int>>& unclampable_body_part_map
-) {
-  std::vector<std::unordered_set<int>> human_contact_graphs;
-  std::unordered_set<int> visited_body_parts;
-  for (int i = 0; i < human_capsules.size(); i++) {
-    if (visited_body_parts.find(i) != visited_body_parts.end()) {
-      continue;
-    }
-    std::unordered_set<int> human_contact_graph;
-    human_contact_graph.insert(i);
-    visited_body_parts.insert(i);
-    buildHumanContactGraph(
-      i,
-      human_capsules,
-      unclampable_body_part_map,
-      visited_body_parts,
-      human_contact_graph);
-    human_contact_graphs.push_back(human_contact_graph);
-  }
-  return human_contact_graphs;
 }
 
 bool selfConstrainedCollisionCheck(const std::vector<int>& robot_collisions,
@@ -400,50 +348,6 @@ void separateConstrainedCollisions(
       unconstrained_collisions.push_back(std::make_pair(human_index, link_index));
     }
   }
-}
-
-bool clampingPossible(const std::vector<reach_lib::Capsule>& robot_capsules, 
-      const std::vector<reach_lib::Capsule>& human_capsules,
-      const std::vector<reach_lib::AABB>& environment_elements,
-      const std::vector<double>& human_radii,
-      const std::unordered_map<int, std::set<int>>& unclampable_body_part_map,
-      const std::unordered_map<int, std::set<int>>& unclampable_enclosures_map,
-      std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator robot_capsule_velocities_it,
-      std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator robot_capsule_velocities_end,
-      std::vector<double> velocity_errors) {
-  // Build a map that maps the robot capsule/environment indices in collision with the human capsules
-  // We choose this indexing to be in line with the paper.
-  if (robot_capsules.size() != robot_capsule_velocities_it->size()) {
-    throw std::length_error("The number of robot capsules does not match the number of robot capsule velocities.");
-  }
-  std::unordered_map<int, std::unordered_set<int>> robot_collision_map;
-  std::unordered_map<int, std::unordered_set<int>> environment_collision_map;
-  buildContactMaps(robot_capsules, human_capsules, environment_elements, robot_collision_map, environment_collision_map);
-  std::vector<double> combined_human_radii;
-  combineContactMaps(human_capsules, human_radii, unclampable_body_part_map, robot_collision_map, environment_collision_map, combined_human_radii);
-  // Check for self-constrained collisions and environmentally-constrained collisions
-  for (const auto& robot_collisions : robot_collision_map) {
-    int human_index = robot_collisions.first;
-    double d_human = 2 * combined_human_radii[human_index];
-    // Self-constrained collision check
-    std::vector<int> robot_collisions_vec(robot_collisions.second.begin(), robot_collisions.second.end());
-    if (selfConstrainedCollisionCheck(robot_collisions_vec, unclampable_enclosures_map, robot_capsules, d_human)) {
-      return true;
-    }
-    // Environmentally-constrained collision check
-    if (environment_collision_map.find(human_index) == environment_collision_map.end()) {
-      // spdlog::info("Human element {} collides with robot but not with environment.", human_index);
-      continue;
-    }
-    std::vector<int> environment_collisions_vec(environment_collision_map.at(human_index).begin(), environment_collision_map.at(human_index).end());
-    if (environmentallyConstrainedCollisionCheck(robot_collisions_vec, robot_capsules,
-        environment_collisions_vec, environment_elements, d_human,
-        robot_capsule_velocities_it, robot_capsule_velocities_end, velocity_errors)) {
-      return true;
-    }
-    // spdlog::info("Human element {} collides with robot and environment but is safe.", human_index);
-  }
-  return false;
 }
 
 std::vector<double> calculateRobotLinkEnergies(
