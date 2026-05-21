@@ -711,8 +711,7 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     // Only replan if the current joint position is different from the last.
     bool new_ltt_calculated = false;
     if (!last_close) {
-      new_ltt_calculated = calculateLongTermTrajectory(current_motion.getAngle(), current_motion.getVelocity(),
-                                                       current_motion.getAcceleration(), new_goal_motion_.getAngle(),
+      new_ltt_calculated = calculateLongTermTrajectory(current_motion, new_goal_motion_,
                                                        new_long_term_trajectory_);
     }
     // A replanning happend, so set the last replan position to the current position

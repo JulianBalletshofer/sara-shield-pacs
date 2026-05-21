@@ -443,7 +443,7 @@ class SafetyShield {
    * @param ltt The calculated long-term trajectory
    * @return True if success, false otherwise
    */
-  bool calculateLongTermTrajectory(const Motion& start_motion, const Motion& goal_motion
+  bool calculateLongTermTrajectory(const Motion& start_motion, const Motion& goal_motion,
                                    LongTermTraj& ltt);
 
   /**
