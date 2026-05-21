@@ -328,21 +328,6 @@ bool clampingPossible(const std::vector<reach_lib::Capsule>& robot_capsules,
     std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator robot_capsule_velocities_end,
     std::vector<double> velocity_errors);
 
-/**
- * @brief Checks if a contact map is empty.
- * 
- * @param contact_map map that contains list of integers for each key.
- * @return true if all lists are empty, false otherwise.
- */
-inline bool checkNoContactsInMap(const std::map<int, std::vector<int>>& contact_map) {
-  for (const auto& contact : contact_map) {
-    if (!contact.second.empty()) {
-      return false;
-    }
-  }
-  return true;
-};
-
 std::vector<double> calculateRobotLinkEnergies(
   const std::vector<double>& robot_link_velocities,
   const std::vector<double>& robot_link_reflected_masses
@@ -432,24 +417,6 @@ std::vector<std::vector<double>> calculateMaxRobotEnergiesFromInertiaMatrices(
   const std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>& robot_inertia_matrices,
   std::vector<std::vector<double>> dq
 );
-
-/**
- * @brief Calculate the velocity error for a given robot link.
- * 
- * @param alpha Maximal Cartesian acceleration of the robot link in the given time frame.
- * @param beta Maximal angular velocity of the robot link in the given time frame.
- * @param delta_s Distance travelled by the robot link measured by path length.
- * @param r Radius of the robot capsule.
- * @return double Velocity error for the given robot link.
- */
-inline double calculateVelocityError(
-  double alpha,
-  double beta,
-  double delta_s,
-  double r
-) {
-  return 0.5 * delta_s * (alpha + beta * r);
-}
 
 }  // namespace safety_shield
 
