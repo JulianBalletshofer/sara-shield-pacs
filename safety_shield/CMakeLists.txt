@@ -84,7 +84,6 @@ if(BUILD_PYTHON_BINDINGS AND Python3_FOUND AND pybind11_FOUND)
 endif()
 
 add_subdirectory(external/SaRA/ReachLib)
-add_subdirectory(external/LongTermPlanner)
 add_subdirectory(external/spdlog)
 add_subdirectory(external/yaml-cpp)
 
@@ -116,7 +115,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/SaRA/ReachLib/include>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/LongTermPlanner/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/yaml-cpp/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/ruckig/include>
@@ -125,14 +123,13 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_link_libraries(${PROJECT_NAME}
   PUBLIC SaRA  # PUBLIC so dependents inherit SaRA automatically
-  PRIVATE long_term_planner spdlog yaml-cpp ruckig
+  PRIVATE spdlog yaml-cpp ruckig
 )
 
 # === Install Targets and Headers ===
 install(TARGETS
   ${PROJECT_NAME}
   SaRA
-  long_term_planner
   spdlog
   yaml-cpp
   ruckig
@@ -145,7 +142,6 @@ install(TARGETS
 
 install(DIRECTORY include/safety_shield DESTINATION include)
 install(DIRECTORY external/SaRA/ReachLib/include/ DESTINATION include/SaRA)
-install(DIRECTORY external/LongTermPlanner/include/ DESTINATION include/long_term_planner)
 
 # === Export CMake Targets ===
 install(EXPORT ${PROJECT_NAME}Targets
@@ -176,20 +172,19 @@ install(FILES
 # === Optional: Pybind11 Python Bindings ===
 if(BUILD_PYTHON_BINDINGS AND Python3_FOUND AND pybind11_FOUND)
   pybind11_add_module(safety_shield_py MODULE bindings/safety_shield_bindings.cpp)
-  target_link_libraries(safety_shield_py PRIVATE ${PROJECT_NAME} long_term_planner spdlog yaml-cpp)
+  target_link_libraries(safety_shield_py PRIVATE ${PROJECT_NAME} spdlog yaml-cpp)
 endif()
 
 # === Optional: Debug Executables ===
 foreach(exec debug self_constrained_collision_debug unconstrained_collision_debug hrgym_scenario_debug debug_real_world_setup)
   add_executable(${exec} src/${exec}.cc)
-  target_link_libraries(${exec} ${PROJECT_NAME} long_term_planner spdlog yaml-cpp)
+  target_link_libraries(${exec} ${PROJECT_NAME} spdlog yaml-cpp)
 endforeach()
 
 add_executable(debug_ruckig src/debug_ruckig.cc)
 target_include_directories(debug_ruckig PRIVATE
     include
     external/SaRA/ReachLib/include
-    external/LongTermPlanner/include
     external/spdlog/include
     external/yaml-cpp/include
     external/ruckig/include
@@ -197,7 +192,6 @@ target_include_directories(debug_ruckig PRIVATE
 )
 target_link_libraries(debug_ruckig
     ${PROJECT_NAME}
-    long_term_planner
     spdlog
     yaml-cpp
     ruckig

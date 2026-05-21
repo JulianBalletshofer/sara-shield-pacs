@@ -26,7 +26,6 @@
 #include <string>
 #include <vector>
 
-#include "long_term_planner/long_term_planner.h"
 #include "reach_lib.hpp"
 #include "safety_shield/config_utils.h"
 #include "safety_shield/exceptions.h"
@@ -309,10 +308,6 @@ class SafetyShield {
   std::vector<std::vector<std::vector<double>>> max_contact_energies_constrained_;
 
   //////// For replanning new trajectory //////
-  /**
-   * @brief Trajecory planner
-   */
-  long_term_planner::LongTermPlanner ltp_;
 
   /**
    * @brief Axis-aligned bounding boxes of the environment elements.
@@ -443,15 +438,12 @@ class SafetyShield {
 
   /**
    * @brief Calculates a new trajectory from current joint state to desired goal state.
-   * @param start_q The current joint angles
-   * @param start_dq The current joint velocities
-   * @param start_ddq The current joint accelerations
-   * @param goal_q The desired joint angles
+   * @param start_motion The current current motion
+   * @param goal_motion The desired motion
    * @param ltt The calculated long-term trajectory
    * @return True if success, false otherwise
    */
-  bool calculateLongTermTrajectory(const std::vector<double>& start_q, const std::vector<double> start_dq,
-                                   const std::vector<double> start_ddq, const std::vector<double>& goal_q,
+  bool calculateLongTermTrajectory(const Motion& start_motion, const Motion& goal_motion
                                    LongTermTraj& ltt);
 
   /**
