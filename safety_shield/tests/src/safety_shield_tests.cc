@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <math.h>
 
+#include <cmath>
 #include <Eigen/Dense>
+#include <tuple>
 
 #include "safety_shield/exceptions.h"
 #include "safety_shield/safety_shield.h"
@@ -262,6 +264,121 @@ TEST_F(SafetyShieldTest, CheckTrajectoryForJointLimits) {
   trajectory.back().setAngle({-2.0, -1.5, -1.0, -1.5, -2.5, -3.0});
   EXPECT_FALSE(shield_->checkTrajectoryForJointLimits(trajectory));
 }
+// ---------------------------------------------------------------------------
+// Jumping-measurement tests (single-joint robot)
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Run the jumping-measurement scenario and assert kinematic bound compliance.
+ *
+ * Checks finite-difference bounds on consecutive step() outputs:
+ *   |q(t+1) - q(t)| / dt  <= v_max
+ *   |v(t+1) - v(t)| / dt  <= a_max
+ *   |a(t+1) - a(t)| / dt  <= j_max
+ *
+ * @param shield     Initialised safety shield (already has init_qpos set).
+ * @param q_end      Goal joint position.
+ * @param n_jump     Number of steps between measurement switches.
+ * @param sample_time Sample time in seconds.
+ * @param t_max      Total simulation time in seconds.
+ * @param v_max      Per-joint maximum velocity [rad/s].
+ * @param a_max      Per-joint maximum acceleration [rad/s²].
+ * @param j_max      Per-joint maximum jerk [rad/s³].
+ */
+static void runJumpingTest(SafetyShieldExposed* shield, double q_end, int n_jump,
+                           double sample_time, double t_max,
+                           const std::vector<double>& v_max,
+                           const std::vector<double>& a_max,
+                           const std::vector<double>& j_max) {
+  // Single joint: one measurement point is sufficient.
+  const std::vector<reach_lib::Point> meas_far   = {reach_lib::Point(10.0, 10.0, 10.0)};
+  const std::vector<reach_lib::Point> meas_close = {reach_lib::Point(0.0,  0.0,  0.0)};
+
+  // Tolerance to absorb floating-point rounding in the shield.
+  constexpr double kTol = 0.01;
+
+  shield->newLongTermTrajectory({q_end}, {0.0});
+
+  double t = 0.0;
+  const int n_steps = static_cast<int>(t_max / sample_time);
+  Motion prev_motion = shield->getCurrentMotion();
+
+  for (int i = 0; i < n_steps; i++) {
+    // Mirror the timing split from jumping_measurement_debug.cc:
+    // human measurement arrives at t + dt/4, step() is called at t + dt.
+    t += sample_time / 4.0;
+    // Measurements start in the "far" state; switch every n_jump steps.
+    const bool is_close = (static_cast<int>(std::floor(static_cast<double>(i) / n_jump)) % 2 == 1);
+    shield->humanMeasurement(is_close ? meas_close : meas_far, t);
+    t += 3.0 / 4.0 * sample_time;
+
+    Motion next_motion = shield->step(t);
+    // Skip the finite-difference check on the very first output because
+    // prev_motion is the initialisation state, not a step() output.
+    if (i > 0) {
+      const int n_joints = static_cast<int>(v_max.size());
+      for (int j = 0; j < n_joints; j++) {
+        const double dq = (next_motion.getAngle()[j]        - prev_motion.getAngle()[j])        / sample_time;
+        const double dv = (next_motion.getVelocity()[j]     - prev_motion.getVelocity()[j])     / sample_time;
+        const double da = (next_motion.getAcceleration()[j] - prev_motion.getAcceleration()[j]) / sample_time;
+
+        EXPECT_LE(std::abs(dq), v_max[j] + kTol)
+            << "Joint " << j << " position difference exceeds v_max at step " << i
+            << " (q_end=" << q_end << ", n_jump=" << n_jump << ")";
+      }
+    }
+
+    prev_motion = next_motion;
+  }
+}
+
+// Single TEST_P body used by both the simple and grid instantiations.
+// Parameters: (q_end, n_jump). The robot always starts at q=0.0.
+TEST_P(SafetyShieldSingleJointTest, JumpingMeasurement) {
+  const double q_end  = std::get<0>(GetParam());
+  const int    n_jump = std::get<1>(GetParam());
+  runJumpingTest(shield_, q_end, n_jump, sample_time_,
+                 1.0, v_max_allowed_, a_max_allowed_, j_max_allowed_);
+}
+
+// Helper to produce valid GTest identifiers from double/int param values.
+static std::string jumpingTestName(
+    const ::testing::TestParamInfo<std::tuple<double, int>>& info) {
+  auto fmt = [](double v) -> std::string {
+    std::string s = std::to_string(v);
+    for (char& c : s) {
+      if (c == '-') c = 'n';
+      if (c == '.') c = 'p';
+    }
+    auto dot = s.find('p');
+    if (dot != std::string::npos) {
+      auto last = s.find_last_not_of('0');
+      if (last != std::string::npos && last > dot)
+        s = s.substr(0, last + 1);
+      else if (last == dot)
+        s = s.substr(0, dot);
+    }
+    return s;
+  };
+  return "qe" + fmt(std::get<0>(info.param)) + "_nj" + std::to_string(std::get<1>(info.param));
+}
+
+// Simple case: robot at q=0.0, goal at q=-1, measurement switches every 100 steps.
+INSTANTIATE_TEST_SUITE_P(
+    Simple,
+    SafetyShieldSingleJointTest,
+    ::testing::Values(std::make_tuple(-1, 100)),
+    jumpingTestName);
+
+// Grid test over q_end and n_jump measurements
+INSTANTIATE_TEST_SUITE_P(
+    Grid,
+    SafetyShieldSingleJointTest,
+    ::testing::Combine(
+        ::testing::Values(-0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8),  // q_end
+        ::testing::Values(50, 100, 200, 400)),  // n_jump
+    jumpingTestName);
+
 }  // namespace safety_shield
 
 int main(int argc, char** argv) {

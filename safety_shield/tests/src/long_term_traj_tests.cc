@@ -335,8 +335,8 @@ TEST(LongTermTrajUtilsTest, calcTimePointsForEquidistantIntervalsTest) {
 
 TEST_F(LongTermTrajTestInterpolation, getMotionsOfAllTimeStepsFromPathTest) {
   Path path = Path();
-  std::array<double, 3> times = {1, 2, 3};
-  std::array<double, 3> jerks = {1, 0, -1};
+  std::vector<double> times = {1, 2, 3};
+  std::vector<double> jerks = {1, 0, -1};
   path.setPhases(times, jerks);
   std::vector<double> time_points = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0};
   std::vector<Motion> interval_edge_motions =
@@ -652,8 +652,8 @@ TEST_F(LongTermTrajInterpolateWithVelocityTest, GetMaxCartVelTest) {
 
 TEST_F(LongTermTrajInterpolateWithVelocityTest, getInertiaMatricesOfAllTimeStepsFromPathTest) {
   Path path = Path();
-  std::array<double, 3> times = {1, 2, 3};
-  std::array<double, 3> jerks = {1, 0, -1};
+  std::vector<double> times = {1, 2, 3};
+  std::vector<double> jerks = {1, 0, -1};
   path.setPhases(times, jerks);
   std::vector<double> time_points = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0};
   std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> inertia_matrices =

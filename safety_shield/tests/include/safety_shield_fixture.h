@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "reach_lib.hpp"
@@ -101,6 +102,42 @@ class SafetyShieldTest : public ::testing::Test {
     delete shield_;
   }
 };
+
+/**
+ * @brief Parameterized test fixture for single-joint jumping-measurement tests.
+ *
+ * The robot always starts at q=0.0. Parameters: (q_end, n_jump).
+ */
+class SafetyShieldSingleJointTest
+    : public ::testing::TestWithParam<std::tuple<double, int>> {
+ protected:
+  SafetyShieldExposed* shield_;
+
+  const double sample_time_ = 0.002;
+  const std::vector<double> v_max_allowed_ = {1.0};
+  const std::vector<double> a_max_allowed_ = {10.0};
+  const std::vector<double> j_max_allowed_ = {400.0};
+
+  void SetUp() override {
+    std::filesystem::path config_dir =
+        std::filesystem::current_path().parent_path() / "config";
+    std::string trajectory_config_file =
+        (config_dir / "trajectory_parameters_single_joint.yaml").string();
+    std::string robot_config_file =
+        (config_dir / "robot_reach_test_single_joint.yaml").string();
+    std::string mocap_config_file =
+        (config_dir / "human_reach_test_single_joint_vel.yaml").string();
+    std::vector<double> init_qpos = {0.0};
+    std::vector<reach_lib::AABB> environment_elements = {};
+    ShieldType shield_type = ShieldType::SSM;
+    shield_ = new SafetyShieldExposed(sample_time_, trajectory_config_file, robot_config_file,
+                                      mocap_config_file, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      init_qpos, environment_elements, shield_type);
+  }
+
+  void TearDown() override { delete shield_; }
+};
+
 }  // namespace safety_shield
 
 #endif  // SAFETY_SHIELD_FIXTURE_H
