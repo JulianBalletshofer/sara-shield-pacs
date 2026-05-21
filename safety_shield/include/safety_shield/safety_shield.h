@@ -732,17 +732,6 @@ class SafetyShield {
   bool verifySafety(const LongTermTraj& sparse_trajectory);
 
   /**
-   * @brief verify if the contact energy constraint is satisfied
-   * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] interval_edges_motions Motions at the edges of the time intervals.
-   * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
-   * @return true if safe
-   * @return false if unsafe
-   */
-  bool verifyContactEnergySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions,
-                                 int& collision_index);
-
-  /**
    * @brief verify if the contact energy constraint is satisfied.
    * @details First classifies the contact type and then checks if the contact energy constraint is satisfied.
    * @param[in] sparse_trajectory The sparse monitored trajectory.
@@ -764,30 +753,6 @@ class SafetyShield {
       const LongTermTraj& sparse_trajectory,
       std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_start,
       std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end);
-
-  /**
-   * @brief verify if the contact velocity constraint is satisfied.
-   * @details This function is not fully implemented and therefore not tested!!!
-   * @details This function is not in use.
-   * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] interval_edges_motions Motions at the edges of the time intervals.
-   * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
-   * @return true if safe
-   * @return false if unsafe
-   */
-  bool verifyContactVelocitySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions,
-                                   int& collision_index);
-
-  /**
-   * @brief verify if the constrained contact constraint (clamping) is satisfied
-   * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] sparse_trajectory The sparse monitored trajectory.
-   * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
-   * @return true if safe
-   * @return false if unsafe
-   */
-  bool verifyConstrainedContactSafety(std::vector<double> time_points, LongTermTraj& sparse_trajectory,
-                                      int& collision_index);
 
   /**
    * @brief Calculates a new trajectory from current joint state to desired goal state.
