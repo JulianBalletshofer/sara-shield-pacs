@@ -166,6 +166,16 @@ class Path {
     if (std::abs(v - v_limit) < 1e-10) {
       return 0;
     }
+    // With zero jerk the velocity profile is linear: v_limit = v + a * dt.
+    // Solving the quadratic formula below would divide by j and produce inf/NaN.
+    if (std::abs(j) < 1e-10) {
+      if (std::abs(a) < 1e-10) {
+        spdlog::error("Error in Path::calculateTimeForVel: zero jerk and acceleration, no solution exists.");
+        return 0;
+      }
+      double dt = (v_limit - v) / a;
+      return (dt > 0) ? dt : -10;
+    }
     // Solve v_limit = prev_vel + prev_acc * dt + jerk * dt^2 / 2 for dt
     double square = std::sqrt(a * a - 2 * j * (v - v_limit));
     double left = (-a - square) / j;
