@@ -742,34 +742,6 @@ void SafetyShield::newGoalPlanning(Motion& current_motion) {
     }
   }
 }
-bool SafetyShield::verifyContactEnergySafety(std::vector<double> time_points,
-                                             std::vector<Motion> interval_edges_motions, int& collision_index) {
-  std::vector<std::vector<double>> maximal_contact_energies = human_reach_->getMaxContactEnergy();
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>> inertias_beginning_of_intervals =
-      getInertiaMatricesFromCurrentLTTandPath(std::vector<double>(time_points.begin(), time_points.end() - 1));
-  bool is_safe = verify_->verifyHumanReachEnergyInertiaMatrices(
-      robot_capsules_time_intervals_, human_capsules_time_intervals_, inertias_beginning_of_intervals,
-      std::vector<Motion>(interval_edges_motions.begin(), interval_edges_motions.end() - 1), maximal_contact_energies,
-      collision_index);
-  return is_safe;
-}
-
-bool SafetyShield::verifyContactVelocitySafety(std::vector<double> time_points,
-                                               std::vector<Motion> interval_edges_motions, int& collision_index) {
-  double dt = time_points[1] - time_points[0];
-  std::vector<double> velocity_errors =
-      robot_reach_->calculateMaxVelErrors(dt, v_max_allowed_, a_max_allowed_, j_max_allowed_);
-  std::vector<std::vector<double>> robot_link_velocities =
-      calculateMaxRobotLinkVelocitiesPerTimeInterval(interval_edges_motions, velocity_errors);
-  std::vector<std::vector<double>> robot_link_reflected_masses =
-      robot_reach_->calculateRobotLinkReflectedMassesPerTimeInterval(interval_edges_motions);
-  std::vector<std::vector<double>> maximal_contact_energies = human_reach_->getMaxContactEnergy();
-  bool is_safe = verify_->verifyHumanReachEnergyReflectedMasses(
-      robot_capsules_time_intervals_, human_capsules_time_intervals_, robot_link_velocities,
-      robot_link_reflected_masses, maximal_contact_energies, collision_index);
-  return is_safe;
-}
-
 bool SafetyShield::verifyContactEnergySafetyByContactType(const LongTermTraj& sparse_trajectory,
                                                           std::vector<double> time_points,
                                                           int& collision_index) {
@@ -799,30 +771,6 @@ void SafetyShield::buildRobotVelocityPointers(
     vel_cap_start.push_back(sparse_trajectory.getVelocityCapsuleIterator(i));
     vel_cap_end.push_back(sparse_trajectory.getVelocityCapsuleIterator(i + 1));
   }
-}
-
-bool SafetyShield::verifyConstrainedContactSafety(std::vector<double> time_points, LongTermTraj& sparse_trajectory,
-                                                  int& collision_index) {
-  std::vector<Motion> interval_edges_motions = sparse_trajectory.getTrajectory();
-  std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator> vel_cap_start, vel_cap_end;
-  buildRobotVelocityPointers(sparse_trajectory, vel_cap_start, vel_cap_end);
-  std::vector<double> velocity_errors =
-      robot_reach_->calculateMaxVelErrors(sample_time_, v_max_allowed_, a_max_allowed_, j_max_allowed_);
-  std::vector<std::vector<double>> human_radii = human_reach_->getAllHumanRadii();
-  std::vector<std::unordered_map<int, std::set<int>>> unclampable_body_part_maps = human_reach_->getUnclampableMap();
-  std::unordered_map<int, std::set<int>> unclampable_enclosures_map = robot_reach_->getUnclampableEnclosures();
-  bool is_safe = true;
-  collision_index = -1;
-  for (int i = 0; i < time_points.size() - 2; i++) {
-    is_safe = verify_->verifyClamping(robot_capsules_time_intervals_[i], human_capsules_time_intervals_[i],
-                                      environment_elements_, human_radii, unclampable_body_part_maps,
-                                      unclampable_enclosures_map, vel_cap_start[i], vel_cap_end[i], velocity_errors);
-    if (!is_safe) {
-      collision_index = i;
-      break;
-    }
-  }
-  return is_safe;
 }
 
 Motion SafetyShield::getCurrentMotion() {
@@ -933,15 +881,6 @@ std::vector<Motion> SafetyShield::getMotionsFromCurrentLTTandPath(const std::vec
     ltt = new_long_term_trajectory_;
   }
   return getMotionsOfAllTimeStepsFromPath(ltt, monitored_path_, time_points);
-}
-
-std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
-SafetyShield::getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>& time_points) {
-  LongTermTraj& ltt = long_term_trajectory_;
-  if (new_ltt_) {
-    ltt = new_long_term_trajectory_;
-  }
-  return getInertiaMatricesOfAllTimeStepsFromPath(ltt, monitored_path_, time_points);
 }
 
 LongTermTraj SafetyShield::buildTrajectory(const std::vector<Motion>& interval_edges_motion,

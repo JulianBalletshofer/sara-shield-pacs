@@ -72,6 +72,8 @@ std::vector<int> findHumanRobotContact(const reach_lib::Capsule& human_capsule,
  * @param robot_capsules List of robot capsules.
  * @returns Map that maps a list of robot link indices to the human capsule they are in contact with.
  *        The key is the human capsule index and the value is a list of robot link indices.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 std::map<int, std::vector<int>> findAllHumanRobotContacts(const std::vector<reach_lib::Capsule>& human_capsule,
     const std::vector<reach_lib::Capsule>& robot_capsules);
@@ -102,30 +104,6 @@ void buildContactMaps(const std::vector<reach_lib::Capsule>& robot_capsules,
     std::unordered_map<int, std::unordered_set<int>>& environment_collision_map);
 
 /**
- * @brief Combine human capsules and their collision maps if multiple human capsules collide. 
- * @details First find all human colliding human capsules.
- *          Then sort out all collision pairs that are excluded by the unclampable body part map.
- *          Then combine the robot and environment collision maps of the remaining human capsules.
- *          The final robot_collision_map will map robot capsule indices to the list of new human capsule indices,
- *          where colliding capsules are combined.
- *          Finally, the combined_human_radii list contains the radii of the new human capsules,
- *          where colliding capsules are combined.
- * 
- * @param[in] human_capsules List of human capsules.
- * @param[in] human_radii List of radii of human body parts/extremities.
- * @param[in] unclampable_body_part_map List of pairs of human body parts that cannot cause clamping because they are part of the same body chain.
- * @param[in, out] robot_collision_map Maps robot capsule indices to human capsule indices in contact.
- * @param[in, out] environment_collision_map Maps environment element indices to human capsule indices in contact.
- * @param[out] combined_human_radii 
- */
-void combineContactMaps(const std::vector<reach_lib::Capsule>& human_capsules,
-    const std::vector<double>& human_radii,
-    const std::unordered_map<int, std::set<int>>& unclampable_body_part_map,
-    std::unordered_map<int, std::unordered_set<int>>& robot_collision_map,
-    std::unordered_map<int, std::unordered_set<int>>& environment_collision_map,
-    std::vector<double>& combined_human_radii);
-
-/**
  * @brief Recursively build the graph of human body parts in contact with each other.
  * 
  * @param[in] current Index of the current capsule/body part.
@@ -140,18 +118,6 @@ void buildHumanContactGraph(
     const std::unordered_map<int, std::set<int>>& unclampable_body_part_map,
     std::unordered_set<int>& visited_body_parts,
     std::unordered_set<int>& human_contact_graph);
-
-/**
- * @brief Build the graphs of human contact. 
- * 
- * @param[in] human_capsules List of human capsules.
- * @param[in] unclampable_body_part_map List of pairs of human body parts that cannot cause clamping because they are part of the same body chain.
- * @return std::vector<std::vector<int>> List of connected circles of human body parts in contact.
- */
-std::vector<std::unordered_set<int>> buildHumanContactGraphs(
-  const std::vector<reach_lib::Capsule>& human_capsules,
-  const std::unordered_map<int, std::set<int>>& unclampable_body_part_map
-);
 
 /**
  * @brief Check if a pair of links are unclampable according to the unclampable map.
@@ -298,51 +264,8 @@ void separateConstrainedCollisions(
 );
 
 /**
- * @brief Verify if clamping between the robot, human, and environment is possible.
- * 
- * @details This function checks two types of constrained collisions.
- *    1) A human body part is clamped between the robot and the environment.
- *       We refer to this as an environmentally constrained collision (ECC).
- *    2) A human body part is clamped between two robot links.
- *       We refer to this as an internally constrained collision (ICC).
- * 
- * @param robot_capsules Reachable capsules of the robot
- * @param human_capsules List of human reachable set capsules.
- * @param environment_elements List of environment elements
- * @param human_radii List of radii of human body parts/extremities.
- * @param unclampable_body_part_map List of pairs of human body parts that cannot cause clamping because they are part of the same body chain.
- * @param unclampable_enclosures_map List of pairs of robot links that cannot cause clamping.
- * @param robot_capsule_velocities_it Iterator pointing to the beginning of the list of robot capsule velocities for this short-term plan.
- * @param robot_capsule_velocities_end Iterator pointing to the end of the list of robot capsule velocities for this short-term plan.
- * @param velocity_errors upper bound of the velocity error for each joint
- * @return true: if clamping between the given human model and the robot can occur
- * @return false: if no clamping can occur
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
-bool clampingPossible(const std::vector<reach_lib::Capsule>& robot_capsules, 
-    const std::vector<reach_lib::Capsule>& human_capsules,
-    const std::vector<reach_lib::AABB>& environment_elements,
-    const std::vector<double>& human_radii,
-    const std::unordered_map<int, std::set<int>>& unclampable_body_part_map,
-    const std::unordered_map<int, std::set<int>>& unclampable_enclosures_map,
-    std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator robot_capsule_velocities_it,
-    std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator robot_capsule_velocities_end,
-    std::vector<double> velocity_errors);
-
-/**
- * @brief Checks if a contact map is empty.
- * 
- * @param contact_map map that contains list of integers for each key.
- * @return true if all lists are empty, false otherwise.
- */
-inline bool checkNoContactsInMap(const std::map<int, std::vector<int>>& contact_map) {
-  for (const auto& contact : contact_map) {
-    if (!contact.second.empty()) {
-      return false;
-    }
-  }
-  return true;
-};
-
 std::vector<double> calculateRobotLinkEnergies(
   const std::vector<double>& robot_link_velocities,
   const std::vector<double>& robot_link_reflected_masses
@@ -357,6 +280,8 @@ std::vector<double> calculateRobotLinkEnergies(
  * @param maximal_contact_energies Maximal admissible human velocities.
  * @return true All robot links are slower than the maximal contact velocity.
  * @return false Otherwise.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 bool checkContactEnergySafety(
   const std::map<int, std::vector<int>>& human_robot_contacts,
@@ -390,6 +315,8 @@ bool checkContactEnergySafetyIndividualLinks(
  * @param maximal_contact_velocities Maximal admissible human velocities.
  * @return true All robot links are slower than the maximal contact velocity.
  * @return false Otherwise.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 bool checkVelocitySafety(
   const std::map<int, std::vector<int>>& human_robot_contacts,
@@ -415,6 +342,8 @@ std::vector<std::vector<double>> calculateMaxRobotLinkVelocitiesPerTimeInterval(
  * @param robot_link_velocities The maximal velocity of each robot link in each time interval.
  * @param robot_link_reflected_masses The maximal reflected masses of each robot link in each time interval.
  * @return std::vector<std::vector<double>> Maximal energy of each robot link for each time interval.
+ *
+ * @deprecated Test-only; not reachable from the live SafetyShield::step() verification path.
  */
 std::vector<std::vector<double>> calculateMaxRobotEnergiesFromReflectedMasses(
   const std::vector<std::vector<double>>& robot_link_velocities,
@@ -432,24 +361,6 @@ std::vector<std::vector<double>> calculateMaxRobotEnergiesFromInertiaMatrices(
   const std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>& robot_inertia_matrices,
   std::vector<std::vector<double>> dq
 );
-
-/**
- * @brief Calculate the velocity error for a given robot link.
- * 
- * @param alpha Maximal Cartesian acceleration of the robot link in the given time frame.
- * @param beta Maximal angular velocity of the robot link in the given time frame.
- * @param delta_s Distance travelled by the robot link measured by path length.
- * @param r Radius of the robot capsule.
- * @return double Velocity error for the given robot link.
- */
-inline double calculateVelocityError(
-  double alpha,
-  double beta,
-  double delta_s,
-  double r
-) {
-  return 0.5 * delta_s * (alpha + beta * r);
-}
 
 }  // namespace safety_shield
 

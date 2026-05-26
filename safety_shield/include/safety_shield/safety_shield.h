@@ -90,13 +90,6 @@ class SafetyShield {
   VerifyISO* verify_;
 
   /**
-   * @brief The visualization of reachable sets
-   *
-   * TODO: Write a visualization for mujoco
-   */
-  // RvizMarker* rviz_;
-
-  /**
    * @brief path to go back to the long term plan
    */
   Path intended_path_;
@@ -739,17 +732,6 @@ class SafetyShield {
   bool verifySafety(const LongTermTraj& sparse_trajectory);
 
   /**
-   * @brief verify if the contact energy constraint is satisfied
-   * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] interval_edges_motions Motions at the edges of the time intervals.
-   * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
-   * @return true if safe
-   * @return false if unsafe
-   */
-  bool verifyContactEnergySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions,
-                                 int& collision_index);
-
-  /**
    * @brief verify if the contact energy constraint is satisfied.
    * @details First classifies the contact type and then checks if the contact energy constraint is satisfied.
    * @param[in] sparse_trajectory The sparse monitored trajectory.
@@ -771,30 +753,6 @@ class SafetyShield {
       const LongTermTraj& sparse_trajectory,
       std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_start,
       std::vector<std::vector<std::vector<RobotReach::CapsuleVelocity>>::const_iterator>& vel_cap_end);
-
-  /**
-   * @brief verify if the contact velocity constraint is satisfied.
-   * @details This function is not fully implemented and therefore not tested!!!
-   * @details This function is not in use.
-   * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] interval_edges_motions Motions at the edges of the time intervals.
-   * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
-   * @return true if safe
-   * @return false if unsafe
-   */
-  bool verifyContactVelocitySafety(std::vector<double> time_points, std::vector<Motion> interval_edges_motions,
-                                   int& collision_index);
-
-  /**
-   * @brief verify if the constrained contact constraint (clamping) is satisfied
-   * @param[in] time_points Time points that define the edges of the time intervals.
-   * @param[in] sparse_trajectory The sparse monitored trajectory.
-   * @param[in] collision_index Index of the first collision in the time intervals, -1 if no collision.
-   * @return true if safe
-   * @return false if unsafe
-   */
-  bool verifyConstrainedContactSafety(std::vector<double> time_points, LongTermTraj& sparse_trajectory,
-                                      int& collision_index);
 
   /**
    * @brief Calculates a new trajectory from current joint state to desired goal state.
@@ -853,15 +811,6 @@ class SafetyShield {
    * @return LongTermTraj trajectory.
    */
   LongTermTraj buildTrajectory(const std::vector<Motion>& interval_edges_motion, bool compute_dynamics);
-
-  /**
-   * @brief Calculate the list of link inertia matrices on the LTT based on the current path and the given time points.
-   *
-   * @param time_points Time points to return the list of motions at.
-   * @return std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
-   */
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>>>
-  getInertiaMatricesFromCurrentLTTandPath(const std::vector<double>& time_points);
 
   /**
    * @brief Receive a new human measurement

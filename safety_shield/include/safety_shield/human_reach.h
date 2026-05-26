@@ -375,6 +375,8 @@ class HumanReach {
    *
    * @param[in] t_start Start of the reachability analysis.
    * @param[in] duration Time horizon of reachability analysis starting from t_start.
+   *
+   * @deprecated Test-only; the live SafetyShield::step() path uses humanReachabilityAnalysisTimeIntervals instead.
    */
   void humanReachabilityAnalysis(double t_start, double duration);
 

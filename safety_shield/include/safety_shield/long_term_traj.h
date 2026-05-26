@@ -652,37 +652,6 @@ class LongTermTraj {
     return !max_jerk_window_.empty();
   }
 
-  /**
-   * @brief sets the maximum acceleration and jerk windows of the LTT
-   * @param sliding_window_k size of sliding window for max acc and jerk calculation
-   */
-  inline void computeMaxAccJerkWindows(int sliding_window_k) {
-    calculateMaxAccJerkWindow(long_term_traj_, sliding_window_k);
-  }
-  
-  /**
-   * @brief sets the alpha and beta values of the robot links in each time interval
-   * @throws std::runtime_error if capsule velocities are not set
-   */
-  inline void computeAlphaBeta() {
-    // check if capsule velocities are set
-    if (!isCapsuleVelocitiesSet()) {
-      throw std::runtime_error("Capsule velocities are not set. Cannot calculate alpha and beta.");
-    }
-    alpha_i_.clear();
-    beta_i_.clear();
-    calculateAlphaBeta();
-  }
-
-  /**
-   * @brief sets the inertia matrices and capsule velocities of the robot links in each time interval
-   * @param[in] robot_reach used to calculate jacobians and velocities
-   */
-  inline void computeDynamics(RobotReach& robot_reach) {
-    inertia_matrices_.clear();
-    capsule_velocities_.clear();
-    velocitiesOfAllMotions(robot_reach);
-  }
 };
 }  // namespace safety_shield
 #endif  // LONG_TERM_TRAJ_H
