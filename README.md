@@ -8,7 +8,7 @@ The SaRA shield additionally provides the necessary trajectory control to stop t
 # Installation
 ### Clone the repo with submodules
 ```
-git clone --recurse-submodules git@github.com:JakobThumm/sara-shield.git
+git clone --recurse-submodules git@github.com:TUMcps/sara-shield.git
 ```
 ### Install the shield [C++ only]
 The installation requires `gcc`, `c++>=17`, and `Eigen3` version 3.4 (download it here: https://eigen.tuxfamily.org/index.php?title=Main_Page).
