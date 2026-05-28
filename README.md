@@ -1,14 +1,16 @@
-# SaRA-shield
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+# SaRA-shield-pacs
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This package provides safety for human-robot interaction using reachability analysis.
+This package provides safety for human-robot interaction using reachability analysis and extends the original  
+[SaRA-shield](https://github.com/TUMcps/sara-shield) framework from the TUM CPS group to support waypoint-based trajectory generation.
+
 We use [SaRA](https://github.com/Sven-Schepp/SaRA) to calculate the reachable sets of humans and robots.
 The SaRA shield additionally provides the necessary trajectory control to stop the robot before any collision with the human could occur.
 
 # Installation
 ### Clone the repo with submodules
 ```
-git clone --recurse-submodules git@github.com:TUMcps/sara-shield.git
+git clone --recurse-submodules git@github.com:JulianBalletshofer/sara-shield-pacs.git
 ```
 ### Install the shield [C++ only]
 The installation requires `gcc`, `c++>=17`, and `Eigen3` version 3.4 (download it here: https://eigen.tuxfamily.org/index.php?title=Main_Page).
